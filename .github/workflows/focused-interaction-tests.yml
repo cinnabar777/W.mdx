@@ -49,7 +49,8 @@ jobs:
         run: |
           node --test \
             --test-name-pattern='CommonMark (raw HTML|active HTML|inline HTML|angle-bracket link|HTML cases)' \
-            test/commonmark-spec.test.cjs
+            test/commonmark-spec.test.cjs \
+            test/commonmark-html-parity.test.cjs
 
       - name: Build Web Bundle
         if: inputs.suite != 'commonmark-html' && inputs.suite != 'commonmark-raw-html'

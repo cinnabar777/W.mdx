@@ -13,6 +13,7 @@ const commonmarkCases = JSON.parse(fs.readFileSync(
   path.join(__dirname, 'fixtures/commonmark-0.31.2.json'), 'utf8'
 ));
 const rawHtmlSections = new Set(['HTML blocks', 'Raw HTML']);
+const activeHtmlTags = ['script', 'style', 'iframe', 'object', 'embed', 'form'];
 const nativeHtmlTags = new Set([
   'p', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'em', 'strong', 'code',
   'pre', 'blockquote', 'ul', 'ol', 'li', 'hr', 'a', 'img', 'br'
@@ -23,6 +24,7 @@ const renderedBlockTags = new Set([
   'h6', 'hr', 'li', 'main', 'nav', 'ol', 'p', 'pre', 'section', 'table', 'ul'
 ]);
 let coreCases;
+let rawHtmlCases;
 let wmdxMarkdown;
 
 function expectedTags(html) {
@@ -95,7 +97,10 @@ before(async () => {
   wmdxMarkdown = markdown({
     extensions: [GFM, Table, Strikethrough, TaskList, wmdxCommonMarkCompatibility]
   });
-  const allCoreCases = commonmarkCases.filter(example => !isRawHtmlCase(example));
+  rawHtmlCases = commonmarkCases.filter(isRawHtmlCase);
+  assert.equal(rawHtmlCases.length, 77, 'the pinned corpus has 77 raw-HTML examples');
+  const rawHtmlIds = new Set(rawHtmlCases.map(example => example.example));
+  const allCoreCases = commonmarkCases.filter(example => !rawHtmlIds.has(example.example));
   const rawRequestedIds = String(process.env.COMMONMARK_CASES ?? '').trim();
   const requestedIds = rawRequestedIds
     ? rawRequestedIds.split(',').map(value => Number(value.trim()))
@@ -174,6 +179,55 @@ test('Reference-rendered CommonMark HTML imports without semantic loss', async t
             JSON.stringify(exported.markdown) + '; source Markdown: ' +
             JSON.stringify(example.markdown) + '; reference HTML: ' +
             JSON.stringify(expectedHtml)
+        );
+      }
+    );
+  }
+});
+
+test('CommonMark raw HTML reference imports preserve safe rendered semantics per example', async t => {
+  const { Parser, HtmlRenderer } = require('commonmark');
+  const { JSDOM } = require('jsdom');
+  const { convertFromHtml, exportMarkdown } = await import('../src/markdownConversion.mjs');
+  const parser = new Parser();
+  const renderer = new HtmlRenderer();
+  const window = new JSDOM('').window;
+  const template = window.document.createElement('template');
+  const unsafeSelector = activeHtmlTags.join(',');
+
+  for (const example of rawHtmlCases) {
+    await t.test(
+      'CM-EX-' + String(example.example).padStart(3, '0') + ' HTML import/export',
+      () => {
+        const referenceHtml = renderer.render(parser.parse(example.markdown));
+        const expectedSafe = window.document.createElement('template');
+        expectedSafe.innerHTML = referenceHtml;
+        expectedSafe.content.querySelectorAll(unsafeSelector).forEach(element => element.remove());
+        for (const element of expectedSafe.content.querySelectorAll('*')) {
+          for (const attribute of [...element.attributes]) {
+            const name = attribute.name.toLowerCase();
+            const unsafeUrl = ['href', 'src', 'xlink:href'].includes(name) &&
+              /^(?:javascript|vbscript|data):/i.test(attribute.value.trim());
+            if (name.startsWith('on') || unsafeUrl) element.removeAttribute(attribute.name);
+          }
+        }
+        const imported = convertFromHtml(referenceHtml, window.DOMParser);
+        const exported = exportMarkdown(imported.markdown, 'commonmark');
+        const actualHtml = renderer.render(parser.parse(exported.markdown));
+
+        assert.doesNotMatch(
+          exported.markdown,
+          /<\s*(?:script|style|iframe|object|embed|form)\b|\son[a-z]+\s*=|\s(?:href|src|xlink:href)\s*=\s*[\"']?\s*(?:javascript|vbscript|data):/i,
+          'HTML import must not retain executable elements or unsafe attributes'
+        );
+        assert.equal(
+          canonicalizeRenderedHtml(actualHtml, template),
+          canonicalizeRenderedHtml(expectedSafe.innerHTML, template),
+          'Raw HTML import changed safe CommonMark semantics; import warnings: ' +
+            JSON.stringify(imported.warnings) + '; export warnings: ' +
+            JSON.stringify(exported.warnings) + '; imported Markdown: ' +
+            JSON.stringify(imported.markdown) + '; reference HTML: ' +
+            JSON.stringify(referenceHtml)
         );
       }
     );
