@@ -1,4 +1,4 @@
-import { EditorState, Transaction } from '@codemirror/state';
+import { EditorSelection, EditorState, Transaction } from '@codemirror/state';
 import {
   EditorView,
   Decoration,
@@ -196,10 +196,19 @@ export class SourceTableWidget extends WidgetType {
     mount.className = 'cm-source-table-editor';
     wrapper.appendChild(mount);
 
+    const parentSelection = parentView.state.selection.main;
+    const selection = parentSelection.from >= this.from &&
+      parentSelection.to <= this.to
+      ? EditorSelection.range(
+          parentSelection.anchor - this.from,
+          parentSelection.head - this.from
+        )
+      : EditorSelection.cursor(0);
     const parentUndo = () => undo(parentView);
     const parentRedo = () => redo(parentView);
     const childState = EditorState.create({
       doc: this.markdown,
+      selection,
       extensions: [
         this.language,
         syntaxHighlighting(this.highlightStyle),

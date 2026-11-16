@@ -4789,7 +4789,12 @@ function buildTableBlockDecorations(state) {
         ) continue;
         const tableText = state.doc.sliceString(node.from, node.to);
         const widget = new WordProcessorTableWidget(tableText, node.from, node.to, {
-          horizontalScrollEnabled: tableScrollWysiwygEnabled
+          horizontalScrollEnabled: tableScrollWysiwygEnabled,
+          onCellEntry: renderPlan.contextual &&
+            activeSyntaxExposureScope === 'block'
+            ? ({ row, col, textOffset }) =>
+                exposeRenderedTableSource(node, row, col, textOffset)
+            : null
         });
 
         builder.push(Decoration.widget({
@@ -4806,6 +4811,49 @@ function buildTableBlockDecorations(state) {
 
   builder.sort((a, b) => a.from - b.from || a.to - b.to);
   return Decoration.set(builder, true);
+}
+
+function exposeRenderedTableSource(table, row, col, textOffset = 0) {
+  const view = activeAdapter?.view;
+  if (
+    !view ||
+    currentModePreference !== 'rendered' ||
+    currentEditorMode !== 'live_preview' ||
+    activeSyntaxExposureScope !== 'block'
+  ) return false;
+
+  const liveTable = markdownRenderPlan(view.state).renderedTables.find(candidate =>
+    candidate.from === table.from && candidate.to === table.to
+  );
+  if (!liveTable) return false;
+  const sourceRow = liveTable.first + (row === 0 ? 0 : row + 1);
+  if (sourceRow > liveTable.last) return false;
+  const line = view.state.doc.line(sourceRow);
+  const cell = parsePipeRow(line)?.cells[col];
+  const cellStart = cell?.contentFrom ?? line.from;
+  const cellEnd = cell?.contentTo ?? line.to;
+  const position = Math.max(
+    cellStart,
+    Math.min(cellEnd, cellStart + Math.max(0, textOffset))
+  );
+
+  view.dispatch({
+    selection: { anchor: position, head: position },
+    scrollIntoView: true
+  });
+  requestAnimationFrame(() => {
+    if (activeAdapter?.view !== view) return;
+    const sourceFrom = view.state.doc.line(liveTable.first).from;
+    const widget = view.dom.querySelector(
+      `.cm-source-table-widget[data-table-from="${sourceFrom}"]`
+    );
+    const childView = widget?._sourceTableEditor ||
+      widget?.querySelector('.cm-source-table-editor')?._sourceTableEditor;
+    if (!childView) return;
+    childView.focus();
+    window.AndroidNative?.showEditorKeyboardForFocusedInput?.();
+  });
+  return true;
 }
 
 function shouldExposeTableSyntax(selection, doc, layout, table) {
