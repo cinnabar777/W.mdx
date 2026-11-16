@@ -58,10 +58,12 @@ const rawHtmlPreservedWarning =
 const unconvertedHtmlBlockWarning =
   'An HTML block without convertible text was preserved unchanged.';
 const expectedHtmlInteropWarnings = new Map([
-  ...[21, 31, 148, 149, 150, 151, 155, 159, 160, 161, 162, 163, 164, 165, 166, 169, 171, 177, 185, 186, 189, 190, 191]
+  ...[21, 31, 148, 149, 150, 151, 155, 159, 160, 161, 162, 163, 164, 165, 166, 169, 171, 185, 186, 189, 190, 191]
     .map(number => [number, [rawHtmlPreservedWarning]]),
   [180, [unconvertedHtmlBlockWarning]],
-  ...[153, 154, 184].map(number => [
+  [177, [unconvertedHtmlBlockWarning]],
+  [184, [rawHtmlPreservedWarning]],
+  ...[153, 154].map(number => [
     number,
     [rawHtmlPreservedWarning, unconvertedHtmlBlockWarning]
   ]),
@@ -69,7 +71,7 @@ const expectedHtmlInteropWarnings = new Map([
     number,
     [rawHtmlPreservedWarning]
   ]),
-  ...[179, 181, 182, 183].map(number => [
+  ...[179, 182, 183].map(number => [
     number,
     [unconvertedHtmlBlockWarning]
   ]),
