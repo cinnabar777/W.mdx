@@ -659,8 +659,19 @@ export function renderMarkdownHtml(source, {
   }
   ensureMediaLabels(parsed);
 
+  const preservedTitles = new Map();
+  let titleIndex = 0;
+  for (const anchor of parsed.querySelectorAll('a[title]')) {
+    let marker = `WMDX_PRESERVED_TITLE_${titleIndex++}_TOKEN`;
+    while (parsed.body.innerHTML.includes(marker)) marker += '_';
+    preservedTitles.set(marker, anchor.getAttribute('title') ?? '');
+    anchor.setAttribute('title', marker);
+  }
   const purifier = createDOMPurify(window);
   purifier.addHook('uponSanitizeAttribute', (node, data) => {
+    if (node.nodeName === 'A' && data.attrName === 'href' && /^(?:javascript|vbscript):/i.test(data.attrValue)) {
+      data.keepAttr = false;
+    }
     if (node.nodeName === 'A' && data.attrName === 'href' && /^obsidian:/i.test(data.attrValue)) {
       data.keepAttr = isSafeObsidianOpenUri(data.attrValue);
     }
@@ -671,9 +682,9 @@ export function renderMarkdownHtml(source, {
       data.keepAttr = isSafeImageDataUri(data.attrValue);
     }
   });
-  const html = purifier.sanitize(parsed.body.innerHTML, {
+  let html = purifier.sanitize(parsed.body.innerHTML, {
     USE_PROFILES: { html: true },
-    ALLOWED_URI_REGEXP: /^(?:(?:(?:f|ht)tps?|mailto|tel|callto|sms|cid|xmpp|matrix):|obsidian:\/\/open(?:[/?#]|$)|[^a-z]|[a-z+.\-]+(?:[^a-z+.\-:]|$))/i,
+    ALLOWED_URI_REGEXP: /^(?:(?:(?:f|ht)tps?|mailto|tel|callto|sms|cid|xmpp|matrix):|obsidian:\/\/open(?:[/?#]|$)|[a-z][a-z0-9+.-]*:|[^a-z]|[a-z+.-]+(?:[^a-z+.-:]|$))/i,
     ADD_TAGS: ['audio', 'video', 'source', 'track', 'figure', 'figcaption', 'mark', 'details', 'summary'],
     ADD_ATTR: [
       'controls', 'preload', 'poster', 'width', 'height', 'download',
@@ -685,6 +696,14 @@ export function renderMarkdownHtml(source, {
     ADD_DATA_URI_TAGS: ['audio', 'video', 'source', 'a', 'img'],
     FORBID_TAGS: ['style', 'link', 'iframe', 'object', 'embed', 'form']
   });
+  if (preservedTitles.size) {
+    const sanitizedDocument = new window.DOMParser().parseFromString(html, 'text/html');
+    for (const anchor of sanitizedDocument.querySelectorAll('a[title]')) {
+      const marker = anchor.getAttribute('title');
+      if (preservedTitles.has(marker)) anchor.setAttribute('title', preservedTitles.get(marker));
+    }
+    html = sanitizedDocument.body.innerHTML;
+  }
   return {
     html,
     warnings: [...markdownWarnings, ...footnoteWarnings, ...assetWarnings]
