@@ -480,7 +480,9 @@ function isSafeObsidianOpenUri(value) {
 }
 
 function normalizeProfileSource(source, profile) {
-  if (profile === 'wmdx') return { markdown: String(source ?? ''), warnings: [] };
+  if (profile === 'wmdx' || profile === 'commonmark') {
+    return { markdown: String(source ?? ''), warnings: [] };
+  }
   return convertFromMarkdown(source, profile, { DOMParser: null });
 }
 
@@ -580,7 +582,9 @@ export function renderMarkdownHtml(source, {
   const normalizedProfile = ['wmdx', 'commonmark', 'gfm', 'obsidian'].includes(profile)
     ? profile
     : 'wmdx';
-  const footnotes = extractFootnotes(String(source ?? ''), footnoteSyntaxSettings);
+  const footnotes = normalizedProfile === 'commonmark'
+    ? { markdown: String(source ?? ''), references: [], rows: [] }
+    : extractFootnotes(String(source ?? ''), footnoteSyntaxSettings);
   const normalized = normalizeProfileSource(footnotes.markdown, normalizedProfile);
   const footnoteBodyWarnings = [];
   const normalizedFootnoteRows = footnotes.rows.map(row => {
@@ -590,7 +594,9 @@ export function renderMarkdownHtml(source, {
     return { ...row, body: convertedBody.markdown };
   });
   const targetDialect = normalizedProfile === 'commonmark' ? 'commonmark' : 'gfm';
-  const exported = exportMarkdown(normalized.markdown, targetDialect);
+  const exported = normalizedProfile === 'commonmark'
+    ? { markdown: normalized.markdown, warnings: [] }
+    : exportMarkdown(normalized.markdown, targetDialect);
   const markdownWarnings = [...normalized.warnings, ...exported.warnings]
     .filter((warning, index, all) => all.indexOf(warning) === index)
     .filter(warning => !warning.includes('GFM alerts do not preserve the Wmdx expanded or collapsed state.'));
