@@ -65,8 +65,14 @@ const expectedHtmlInteropWarnings = new Map([
     number,
     [rawHtmlPreservedWarning, unconvertedHtmlBlockWarning]
   ]),
-  [152, [rawHtmlPreservedWarning]],
-  [188, [rawHtmlPreservedWarning]],
+  ...[152, 156, 157, 158, 167, 188].map(number => [
+    number,
+    [rawHtmlPreservedWarning]
+  ]),
+  ...[179, 181, 182, 183].map(number => [
+    number,
+    [unconvertedHtmlBlockWarning]
+  ]),
   [174, [rawHtmlPreservedWarning]]
 ]);
 let wmdxMarkdown;

@@ -1233,7 +1233,7 @@ function protectTopLevelMarkdownHtmlBlocks(source, format, Parser, warnings) {
     }
     const containerTag =
       token.type === 'html' && token.block === true
-        ? /^\s*<(details|div)\b/i.exec(raw)?.[1]?.toLowerCase()
+        ? /^\s*<([a-z][\w:-]*)\b/i.exec(raw)?.[1]?.toLowerCase()
         : null;
     if (containerTag && htmlContainerBalance(raw, containerTag) > 0) {
       let balance = htmlContainerBalance(raw, containerTag);
@@ -1242,7 +1242,7 @@ function protectTopLevelMarkdownHtmlBlocks(source, format, Parser, warnings) {
       for (let next = tokenIndex + 1; next < tokens.length; next += 1) {
         const candidate = tokens[next];
         grouped += String(candidate.raw ?? '');
-        if (candidate.type === 'html' && candidate.block === true) {
+        if (candidate.type === 'html') {
           balance += htmlContainerBalance(candidate.raw, containerTag);
         }
         if (balance <= 0) {
@@ -1298,10 +1298,18 @@ function protectTopLevelMarkdownHtmlBlocks(source, format, Parser, warnings) {
         /^[ \t]{0,3}(?:`{3,}|~{3,})/m.test(raw);
       const isCommentOrDeclaration =
         /^\s*(?:<!--|<!\[CDATA\[|<\?)/i.test(raw);
-      const preserveForContext =
-        touchesMarkdownContent && !hasActiveElement && !isCommentOrDeclaration;
       const isProcessingInstruction = /^\s*<\?/.test(raw);
-      if (isProcessingInstruction) {
+      const unclosedHtmlContainer = Boolean(
+        containerTag &&
+        (htmlContainerBalance(raw, containerTag) > 0 ||
+          (containerTag === 'div' &&
+            /^\s*<div\b/i.test(raw) &&
+            !/<\/div\s*>/i.test(raw)))
+      );
+      const preserveForContext =
+        (touchesMarkdownContent && !hasActiveElement && !isCommentOrDeclaration) ||
+        (unclosedHtmlContainer && !hasActiveElement);
+      if (isProcessingInstruction || isCommentOrDeclaration) {
         let marker;
         do {
           marker = `\uE020MDXHTMLBLOCK${markerIndex++}\uE021`;
