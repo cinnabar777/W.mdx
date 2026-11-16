@@ -3146,6 +3146,15 @@ function importCommonMarkReferenceHtml(body, Parser, warnings, footnoteDefinitio
   for (const [marker, replacement] of literalBlockStartMarkers) {
     markdownSource = markdownSource.split(marker).join(replacement);
   }
+  // Ordered markers other than 1 cannot interrupt a paragraph after a soft break,
+  // so escape their delimiter only when they occur at a true block start.
+  const softBreakParts = markdownSource.split(softBreakMarker);
+  markdownSource = softBreakParts.map((part, index) => {
+    if (index === 0) return part;
+    return part.replace(/^([ \t]{0,3})(\d{1,9})\\([.)](?=[ \t])/, (whole, indent, digits, delimiter) =>
+      Number(digits) === 1 ? whole : `${indent}${digits}${delimiter}`
+    );
+  }).join(softBreakMarker);
   markdownSource = markdownSource.split(softBreakMarker).join('\n');
   markdownSource = protectCodeFences(markdownSource, (lines, protectedLines) =>
     lines.map((line, index) => !protectedLines.has(index) && line.startsWith(leadingNbspCharacter)
