@@ -173,6 +173,11 @@ CommonMark defines raw HTML blocks and inline raw HTML, so this belongs to the C
 - **codemirror-for-writers:** https://github.com/dwaynemcyrus/codemirror-for-writers describes hybrid CodeMirror editing, but GitHub reports no repository license. Do not reuse its code unless a license is added or permission is obtained.
 - **@latentic/live-markdown:** https://github.com/getlatentic/live-markdown is MIT-licensed and useful as a CodeMirror live-rendering reference; its documentation does not establish raw-HTML support, so it is not the solution to this gap.
 
+### Obsidian HTML Plugins Reviewed
+
+- **HTML Reader (MIT):** https://github.com/nuthrash/obsidian-html-plugin opens standalone .html and .htm files in a dedicated view and offers several restricted-to-unrestricted rendering modes using an iframe, sanitization, and CSP. It may inform future standalone HTML-file opening and security settings, but it does not render raw HTML syntax inside Markdown.
+- **Embed HTML (MIT):** https://github.com/mnaoumov/obsidian-embed-html embeds whole local or remote HTML pages in notes using an iframe, with page styles, assets, sizing, and JavaScript. It is a possible future reference for HTML attachments/embeds, not for inline or block HTML syntax in Markdown; its script-running behavior is outside the safe CommonMark renderer.
+
 ### Implementation Boundary
 
 Use the existing CommonMark parser to identify and render CommonMark raw-HTML nodes, then sanitize before attaching any rendered DOM. Keep the original Markdown unchanged, preserve source offsets, and reveal raw syntax when the caret enters the HTML span or block. Source view continues to show literal source. Never execute scripts, event handlers, or unsafe URLs; if a sanitizer rejects content, preserve and expose the source instead of silently deleting it. Support ordinary safe HTML through a documented allowlist, and do not claim arbitrary custom or active HTML is fully rendered. Whole-document HTML/MHTML conversion remains a later phase.
