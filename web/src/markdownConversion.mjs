@@ -328,15 +328,45 @@ function protectRawHtmlTableLines(lines, protectedLines) {
   }
 }
 
+function findInlineMathRanges(value) {
+  const text = String(value ?? '');
+  const patterns = [
+    /(?<!\\)\$\$[\s\S]*?(?<!\\)\$\$/g,
+    /\\\([\s\S]*?\\\)/g,
+    /\\\[[\s\S]*?\\\]/g,
+    /(?<!\\)\$(?!\$)([^$\n]*[\\^_{}=+*/-][^$\n]*)(?<!\\)\$(?!\$)/g
+  ];
+  const candidates = [];
+  for (const pattern of patterns) {
+    for (const match of text.matchAll(pattern)) {
+      candidates.push({
+        from: match.index,
+        to: match.index + match[0].length,
+        value: match[0]
+      });
+    }
+  }
+  candidates.sort((left, right) =>
+    left.from - right.from || right.to - left.to
+  );
+  const ranges = [];
+  for (const candidate of candidates) {
+    if (ranges.some(range =>
+      candidate.from < range.to && candidate.to > range.from
+    )) continue;
+    ranges.push(candidate);
+  }
+  return ranges;
+}
+
 function protectInlineMathSyntax(text, protect) {
-  return String(text ?? '')
-    .replace(/(?<!\\)\$\$[\s\S]*?(?<!\\)\$\$/g, protect)
-    .replace(/\\\([\s\S]*?\\\)/g, protect)
-    .replace(/\\\[[\s\S]*?\\\]/g, protect)
-    .replace(
-      /(?<!\\)\$(?!\$)([^$\n]*[\\^_{}=+*/-][^$\n]*)(?<!\\)\$(?!\$)/g,
-      protect
-    );
+  let result = String(text ?? '');
+  const ranges = findInlineMathRanges(result);
+  for (let index = ranges.length - 1; index >= 0; index -= 1) {
+    const { from, to, value } = ranges[index];
+    result = result.slice(0, from) + protect(value) + result.slice(to);
+  }
+  return result;
 }
 
 function protectMathForStandardNormalization(source) {
@@ -1842,6 +1872,12 @@ function markdownText(value, {
     addMatches(/(^|\n)([ \t]*)(\[)(?=[^\]\n]+\]:)/gm, 3);
   }
 
+  for (const { from, to } of findInlineMathRanges(source)) {
+    for (let index = from; index < to; index += 1) {
+      escapePositions.delete(index);
+    }
+  }
+
   const escapablePunctuation = /[!"#$%&'()*+,\-./:;<=>?@[\\\]^_`{|}~]/;
   let escaped = '';
   for (let index = 0; index < source.length; index++) {
@@ -2082,7 +2118,23 @@ function htmlBlock(node, warnings, depth = 0, options = {}) {
   if (node.nodeType !== 1) return '';
   const tag = node.tagName.toLowerCase();
   if (node.hasAttribute('style') && !isGeneratedTocNode(node)) {
-    addWarning(warnings, 'Unmapped inline CSS styling was ignored during HTML import.');
+    const styleProperties = (node.getAttribute('style') ?? '')
+      .split(';')
+      .map(declaration => declaration.split(':', 1)[0].trim().toLowerCase())
+      .filter(Boolean);
+    const hasMappedDivAlignment = tag === 'div' &&
+      styleProperties.includes('text-align');
+    const unmappedProperties = hasMappedDivAlignment
+      ? styleProperties.filter(property => property !== 'text-align')
+      : styleProperties;
+    if (unmappedProperties.length) {
+      addWarning(
+        warnings,
+        hasMappedDivAlignment
+          ? `Additional inline CSS properties on an aligned div were not preserved: ${unmappedProperties.join(', ')}.`
+          : `Unmapped inline CSS styling was ignored during HTML import (${unmappedProperties.join(', ')}).`
+      );
+    }
   }
   const children = (childOptions = options) => Array.from(node.childNodes)
     .map(child => htmlBlock(child, warnings, depth + 1, childOptions))
@@ -3162,15 +3214,22 @@ function mapWmdxParagraphAlignments(lines, protectedLines, dialect) {
     const htmlReadyBody = dialect === 'commonmark'
       ? convertGfmTablesToCommonMarkHtml(body)
       : body;
-    const renderedBody = marked.parse(htmlReadyBody, {
+    const renderOptions = {
       gfm: dialect !== 'commonmark',
       breaks: false,
       async: false
-    }).trim();
+    };
+    const tokens = marked.lexer(htmlReadyBody, renderOptions);
+    const renderedBody = (
+      tokens.length === 1 && tokens[0].type === 'paragraph'
+        ? marked.parseInline(htmlReadyBody, renderOptions)
+        : marked.parse(htmlReadyBody, renderOptions)
+    ).trim();
     const indent = marker[1];
-    output.push(
-      `${indent}<div align="${alignment}">\n${renderedBody}\n${indent}</div>`
-    );
+    const alignedHtml = tokens.length === 1 && tokens[0].type === 'paragraph'
+      ? `<div align="${alignment}">${renderedBody}</div>`
+      : `<div align="${alignment}">\n${renderedBody}\n${indent}</div>`;
+    output.push(`${indent}${alignedHtml}`);
     index = end - 1;
   }
   return output;

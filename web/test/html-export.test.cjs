@@ -64,6 +64,49 @@ test('HTML export converts Obsidian links and folded callouts to readable HTML',
   assert.match(document.body.textContent, /Keep this collapsed/);
 });
 
+test('Obsidian math delimiters stay literal instead of becoming Markdown emphasis', () => {
+  const source = [
+    '**OTHER OPTIONS**',
+    '',
+    '100m$_2$ = 100m$_2$',
+    '100m$^2$ = 100m $^2$',
+    '_`H$_2$O`_ = H $*2$ O',
+    'Word$^{label}$ = Word$^{label}$',
+    'Word$_{label}$ = Word$_{label}$'
+  ].join('\n');
+  const { dom, result } = render(source, 'obsidian');
+  const document = new dom.window.DOMParser().parseFromString(result.html, 'text/html');
+  const paragraph = document.querySelectorAll('p')[1];
+
+  assert.equal(
+    paragraph.textContent,
+    [
+      '100m$_2$ = 100m$_2$',
+      '100m$^2$ = 100m $^2$',
+      'H$_2$O = H $*2$ O',
+      'Word$^{label}$ = Word$^{label}$',
+      'Word$_{label}$ = Word$_{label}$'
+    ].join('\n')
+  );
+  assert.equal(paragraph.querySelectorAll('em').length, 1);
+  assert.equal(paragraph.querySelector('em code')?.textContent, 'H$_2$O');
+
+  const imported = convertFromHtml(result.html, dom.window.DOMParser);
+  const exported = exportMarkdown(imported.markdown, 'obsidian');
+  const returned = renderMarkdownHtml(exported.markdown, {
+    profile: 'obsidian',
+    window: dom.window
+  });
+  const returnedDocument = new dom.window.DOMParser()
+    .parseFromString(returned.html, 'text/html');
+  const returnedParagraph = returnedDocument.querySelectorAll('p')[1];
+
+  assert.match(imported.markdown, /100m\$_2\$ \\?= 100m\$_2\$/);
+  assert.match(imported.markdown, /100m\$\\?\^2\$ = 100m \$\\?\^2\$/);
+  assert.equal(returnedParagraph.textContent, paragraph.textContent);
+  assert.equal(returnedParagraph.querySelectorAll('em').length, 1);
+});
+
 test('strict CommonMark HTML export preserves tables using valid raw HTML', () => {
   const { dom, result } = render(
     '| A | B |\n| --- | --- |\n| 1 | 2 |',

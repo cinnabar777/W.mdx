@@ -611,6 +611,27 @@ test('Markdown export maps Wmdx headings, links, tables, and callout states by t
   assert.ok(inline.warnings.some(warning => warning.includes('Colored or styled underline')));
 });
 
+test('single-paragraph alignment HTML avoids an injected paragraph wrapper', async () => {
+  const { exportMarkdown } = await import('../src/markdownConversion.mjs');
+  const alignments = [
+    ['<', 'left'],
+    ['><', 'center'],
+    ['>', 'right'],
+    ['<>', 'justify']
+  ];
+
+  for (const dialect of ['commonmark', 'gfm', 'obsidian']) {
+    for (const [marker, alignment] of alignments) {
+      const result = exportMarkdown(`${marker}\n**Aligned** text`, dialect);
+      assert.equal(
+        result.markdown,
+        `<div align="${alignment}"><strong>Aligned</strong> text</div>`,
+        `${dialect} ${alignment} alignment`
+      );
+    }
+  }
+});
+
 test('strict CommonMark converts GFM tables nested in blockquotes and lists to raw HTML', async () => {
   const { convertFromMarkdown, exportMarkdown } =
     await import('../src/markdownConversion.mjs');
@@ -658,6 +679,7 @@ test('HTML import converts semantic content and omits active elements', async ()
     '<h1>Title</h1><p><strong>Bold</strong> and <u>underlined</u> with H<sub>2</sub>O.</p>' +
     '<ul><li>One<ul><li>Nested</li></ul></li><li><input type="checkbox" checked>Done</li></ul>' +
     '<div align="center"><p>Centered</p></div>' +
+    '<div style="text-align:justify; text-justify:inter-word">Justified</div>' +
     '<figure style="text-align:center"><img src="images/photo.png" alt="Photo" width="120" height="60">' +
     '<figcaption>Caption</figcaption></figure>' +
     '<a href="files/notes (1).pdf" download>PDF attachment</a>' +
@@ -671,6 +693,10 @@ test('HTML import converts semantic content and omits active elements', async ()
   assert.match(result.markdown, /- One\n  - Nested/);
   assert.match(result.markdown, /- \[x\] Done/);
   assert.match(result.markdown, /^><\nCentered$/m);
+  assert.match(result.markdown, /^<>\nJustified$/m);
+  assert.ok(result.warnings.some(warning =>
+    warning.includes('text-justify') && warning.includes('not preserved')
+  ));
   assert.match(result.markdown, /!\[images\/photo\.png\|Caption\|120x60\|><\]/);
   assert.match(
     result.markdown,

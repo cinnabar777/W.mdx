@@ -247,6 +247,59 @@ function protectedMarkdownRanges(source) {
   };
 }
 
+function protectObsidianMathForRendering(source) {
+  const text = String(source ?? '');
+  const patterns = [
+    /(?<!\\)\$\$[\s\S]*?(?<!\\)\$\$/g,
+    /\\\([\s\S]*?\\\)/g,
+    /\\\[[\s\S]*?\\\]/g,
+    /(?<!\\)\$(?!\$)([^$\n]*[\\^_{}=+*/-][^$\n]*)(?<!\\)\$(?!\$)/g
+  ];
+  const matches = [];
+  for (const pattern of patterns) {
+    for (const match of text.matchAll(pattern)) {
+      const from = match.index;
+      const to = from + match[0].length;
+      if (matches.some(existing => from < existing.to && to > existing.from)) continue;
+      matches.push({ from, to, value: match[0] });
+    }
+  }
+  matches.sort((left, right) => left.from - right.from);
+
+  let markdown = text;
+  const values = matches.map(({ value }, index) => ({
+    marker: `\uE000OBSMATH${index}\uE001`,
+    value
+  }));
+  for (let index = matches.length - 1; index >= 0; index -= 1) {
+    const { from, to } = matches[index];
+    markdown = markdown.slice(0, from) +
+      values[index].marker +
+      markdown.slice(to);
+  }
+  return { markdown, values };
+}
+
+function restoreObsidianMathInDocument(document, values) {
+  if (!values.length) return;
+  const restore = text => values.reduce(
+    (result, { marker, value }) => result.replaceAll(marker, value),
+    text
+  );
+  const showText = document.defaultView?.NodeFilter?.SHOW_TEXT ?? 4;
+  const walker = document.createTreeWalker(document.body, showText);
+  while (walker.nextNode()) {
+    walker.currentNode.nodeValue = restore(walker.currentNode.nodeValue ?? '');
+  }
+  for (const element of document.body.querySelectorAll('*')) {
+    for (const attribute of Array.from(element.attributes)) {
+      if (attribute.value.includes('\uE000OBSMATH')) {
+        element.setAttribute(attribute.name, restore(attribute.value));
+      }
+    }
+  }
+}
+
 function extractFootnotes(source, syntaxSettings) {
   if (!String(source ?? '').includes('^')) {
     return { markdown: String(source ?? ''), rows: [], references: [] };
@@ -503,8 +556,14 @@ export function renderMarkdownHtml(source, {
   const markdownWarnings = [...normalized.warnings, ...exported.warnings]
     .filter((warning, index, all) => all.indexOf(warning) === index)
     .filter(warning => !warning.includes('GFM alerts do not preserve the Wmdx expanded or collapsed state.'));
-  const markdownHtml = renderMarkdownForDialect(exported.markdown, targetDialect);
+  const protectedMath = normalizedProfile === 'obsidian'
+    ? protectObsidianMathForRendering(exported.markdown)
+    : { markdown: exported.markdown, values: [] };
+  const markdownHtml = renderMarkdownForDialect(protectedMath.markdown, targetDialect);
   const parsed = new window.DOMParser().parseFromString(markdownHtml, 'text/html');
+  if (normalizedProfile === 'obsidian') {
+    restoreObsidianMathInDocument(parsed, protectedMath.values);
+  }
   if (normalizedProfile === 'obsidian') {
     annotateObsidianWikiLinks(parsed, normalized.markdown);
   }
