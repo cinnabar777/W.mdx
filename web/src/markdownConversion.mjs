@@ -2852,7 +2852,15 @@ function importCommonMarkReferenceHtml(body, Parser, warnings, footnoteDefinitio
   };
   const safeEmphasisContent = (content, node) => {
     if (node.querySelector('strong, b, em, i, a, code')) return content;
-    return content.replace(/\*/g, character => String.fromCharCode(92) + character);
+    const backslash = String.fromCharCode(92);
+    let safeContent = '';
+    let backslashRun = 0;
+    for (const character of content) {
+      if (character === '*' && backslashRun % 2 === 0) safeContent += backslash;
+      safeContent += character;
+      backslashRun = character === backslash ? backslashRun + 1 : 0;
+    }
+    return safeContent;
   };
   converter.addRule('commonMarkEmphasis', {
     filter: ['em', 'i'],
