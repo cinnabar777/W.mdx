@@ -13,6 +13,11 @@ on:
           - tables
           - interactions
           - commonmark-html
+      commonmark_cases:
+        description: Optional comma-separated CommonMark example numbers; blank runs all 575
+        type: string
+        required: false
+        default: ''
 
 jobs:
   browser:
@@ -33,6 +38,8 @@ jobs:
       - name: Run CommonMark HTML import/export parity
         if: inputs.suite == 'commonmark-html'
         working-directory: web
+        env:
+          COMMONMARK_CASES: ${{ inputs.commonmark_cases }}
         run: node --test test/commonmark-html-parity.test.cjs
 
       - name: Build Web Bundle

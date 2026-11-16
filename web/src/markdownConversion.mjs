@@ -3,6 +3,7 @@ import { markdown } from '@codemirror/lang-markdown';
 import { ensureSyntaxTree } from '@codemirror/language';
 import { GFM, Strikethrough, Table, TaskList } from '@lezer/markdown';
 import { marked } from 'marked';
+import TurndownService from 'turndown';
 import {
   formatWmdxResourceSyntax,
   getWmdxResourceFallbackTitle,
@@ -2658,6 +2659,54 @@ function extractWmdxHtmlFootnotes(document, warnings) {
   return { definitions, restored: true };
 }
 
+const commonMarkReferenceHtmlElements = new Set([
+  'p', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'blockquote',
+  'ul', 'ol', 'li', 'pre', 'code', 'em', 'strong', 'del',
+  'a', 'img', 'br', 'hr'
+]);
+const commonMarkReferenceHtmlAttributes = Object.freeze({
+  a: new Set(['href', 'title']),
+  img: new Set(['src', 'alt', 'title']),
+  code: new Set(['class']),
+  ol: new Set(['start'])
+});
+
+function isCommonMarkReferenceHtml(body) {
+  for (const node of body.querySelectorAll('*')) {
+    const tag = node.tagName.toLowerCase();
+    if (!commonMarkReferenceHtmlElements.has(tag)) return false;
+    const allowedAttributes = commonMarkReferenceHtmlAttributes[tag] ?? new Set();
+    for (const attribute of Array.from(node.attributes)) {
+      const name = attribute.name.toLowerCase();
+      if (!allowedAttributes.has(name)) return false;
+      if (tag === 'ol' && name === 'start' && !/^\d+$/.test(attribute.value)) {
+        return false;
+      }
+    }
+  }
+  return true;
+}
+
+function importCommonMarkReferenceHtml(body, Parser, warnings, footnoteDefinitions) {
+  const converter = new TurndownService({
+    headingStyle: 'atx',
+    codeBlockStyle: 'fenced',
+    bulletListMarker: '-',
+    emDelimiter: '*',
+    strongDelimiter: '**',
+    hr: '---'
+  });
+  const markdownSource = converter.turndown(body);
+  const imported = convertFromMarkdown(markdownSource, 'commonmark', { DOMParser: Parser });
+  const markdown = [imported.markdown, ...footnoteDefinitions]
+    .filter(Boolean)
+    .join('\n\n');
+  if (!markdown && body.textContent?.trim()) {
+    throw new Error('No readable document content could be converted from this HTML.');
+  }
+  return { markdown, warnings: [...warnings, ...imported.warnings] };
+}
+
 export function convertFromHtml(
   source,
   Parser = globalThis.DOMParser,
@@ -2682,6 +2731,9 @@ export function convertFromHtml(
   );
   const footnotes = extractWmdxHtmlFootnotes(document, warnings);
   const body = document.body;
+  if (isCommonMarkReferenceHtml(body)) {
+    return importCommonMarkReferenceHtml(body, Parser, warnings, footnotes.definitions);
+  }
   const unorderedListMarkerState = { lastByIndent: new Map() };
   const mainMarkdown = Array.from(body.childNodes)
     .map(node => htmlBlock(node, warnings, 0, {

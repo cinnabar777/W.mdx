@@ -94,8 +94,27 @@ before(async () => {
   wmdxMarkdown = markdown({
     extensions: [GFM, Table, Strikethrough, TaskList, wmdxCommonMarkCompatibility]
   });
-  coreCases = commonmarkCases.filter(example => !isRawHtmlCase(example));
-  assert.equal(coreCases.length, 575, 'only the 575 non-raw-HTML reference cases enter this gate');
+  const allCoreCases = commonmarkCases.filter(example => !isRawHtmlCase(example));
+  const rawRequestedIds = String(process.env.COMMONMARK_CASES ?? '').trim();
+  const requestedIds = rawRequestedIds
+    ? rawRequestedIds.split(',').map(value => Number(value.trim()))
+    : [];
+  assert.ok(
+    requestedIds.every(id => Number.isInteger(id) && id > 0),
+    'COMMONMARK_CASES must be a comma-separated list of positive example numbers'
+  );
+  const requested = new Set(requestedIds);
+  assert.equal(requested.size, requestedIds.length, 'COMMONMARK_CASES must not repeat example numbers');
+  coreCases = requested.size
+    ? allCoreCases.filter(example => requested.has(example.example))
+    : allCoreCases;
+  const missingIds = [...requested].filter(id => !coreCases.some(example => example.example === id));
+  assert.deepEqual(missingIds, [], 'requested example numbers must exist in the non-raw-HTML corpus');
+  if (requested.size) {
+    assert.equal(coreCases.length, requested.size, 'focused CommonMark run includes every requested case');
+  } else {
+    assert.equal(coreCases.length, 575, 'only the 575 non-raw-HTML reference cases enter this gate');
+  }
 });
 
 test('CommonMark 0.31.2 core Markdown exports to reference-equivalent HTML', async t => {
