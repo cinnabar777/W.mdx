@@ -1870,8 +1870,7 @@ function pairedMarkdownDelimiterPositions(source, marker, { commonMarkEmphasis =
 function markdownText(value, {
   escapeBlockSyntax = true,
   tableCell = false,
-  wmdxSyntax = true,
-  softBreakLineStarts = new Set()
+  wmdxSyntax = true
 } = {}) {
   const source = String(value ?? '');
   const escapePositions = new Set();
@@ -1924,9 +1923,7 @@ function markdownText(value, {
     const numericListMarker = /(^|\n)([ \t]*)(\d+)([.)])(?=[ \t])/gm;
     for (const match of source.matchAll(numericListMarker)) {
       const lineStart = match.index + match[1].length;
-      const followsParagraphBreak = softBreakLineStarts.has(lineStart) ||
-        (lineStart > 0 && source[lineStart - 1] === '\n');
-      if (followsParagraphBreak && Number(match[3]) !== 1) continue;
+      if (lineStart > 0 && Number(match[3]) !== 1) continue;
       escapePositions.add(lineStart + match[2].length + match[3].length);
     }
     addMatches(/(^|\n)([ \t]*)([A-Za-z]+)([.)])(?=[ \t])/gm, 4);
@@ -2968,21 +2965,10 @@ function importCommonMarkReferenceHtml(body, Parser, warnings, footnoteDefinitio
   converter.escape = value => {
     const input = String(value ?? '');
     const hasSoftBreak = input.includes(softBreakMarker);
-    const softBreakLineStarts = new Set();
-    let source = '';
-    let cursor = 0;
-    let markerPosition = input.indexOf(softBreakMarker, cursor);
-    while (markerPosition >= 0) {
-      source += input.slice(cursor, markerPosition) + '\n';
-      softBreakLineStarts.add(source.length);
-      cursor = markerPosition + softBreakMarker.length;
-      markerPosition = input.indexOf(softBreakMarker, cursor);
-    }
-    source += input.slice(cursor);
+    const source = input.split(softBreakMarker).join('\n');
     const escaped = markdownText(source, {
       escapeBlockSyntax: true,
-      wmdxSyntax: true,
-      softBreakLineStarts
+      wmdxSyntax: true
     });
     const escapeBlockStart = line => {
       const leading = /^ {0,3}/.exec(line)?.[0] ?? '';
