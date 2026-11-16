@@ -10,7 +10,8 @@
     "test:browser:layout": "node browser-tests/unified-layout.cjs",
     "test:browser:interactions": "node browser-tests/editor-interaction-regressions.cjs",
     "test:browser:tables": "node browser-tests/table-workflow-matrix.cjs",
-    "test:browser:lists": "node browser-tests/list-workflow-matrix.cjs"
+    "test:browser:lists": "node browser-tests/list-workflow-matrix.cjs",
+    "test:browser:list-caret": "node browser-tests/list-caret-stability.cjs"
   },
   "dependencies": {
     "@codemirror/commands": "^6.8.0",

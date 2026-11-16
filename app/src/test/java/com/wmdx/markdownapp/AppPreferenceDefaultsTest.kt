@@ -8,16 +8,20 @@ import org.junit.Test
 
 class AppPreferenceDefaultsTest {
     @Test
-    fun backupPreferenceDefaultsKeepFontFamiliesButExcludeFontFilesAndPersonalState() {
+    fun backupPreferenceDefaultsKeepOnlyRecoveredValuesAndExcludePersonalState() {
         val defaults = AppPreferenceDefaults.parseDefaults(readDefaultsResource())
 
-        assertEquals("roboto-flex", defaults["pref_body_font_family"])
+        assertEquals(17, defaults["pref_body_font_size"])
+        assertFalse(defaults.containsKey("pref_body_font_family"))
+        assertEquals("roboto-flex", defaults["pref_bold_font_family"])
         assertEquals("roboto-flex", defaults["pref_list_font_family"])
         assertEquals("sans-serif-light", defaults["pref_toc_font_family"])
-        assertEquals(12, defaults["pref_list_left_indent"])
+        assertFalse(defaults.containsKey("pref_list_left_indent"))
         assertEquals(false, defaults["pref_list_non_hanging"])
-        assertEquals("gfm", defaults["pref_markdown_profile"])
+        assertFalse(defaults.containsKey("pref_markdown_profile"))
+        assertFalse(defaults.containsKey("pref_todo_unchecked_color"))
 
+        assertEquals(119, defaults.size)
         assertFalse(defaults.keys.any { "font_file" in it })
         assertFalse(defaults.containsKey("pref_toolbar_bottom_config"))
         assertFalse(defaults.containsKey("pref_list_wrap_under_text"))
@@ -25,6 +29,8 @@ class AppPreferenceDefaultsTest {
         assertFalse(defaults.containsKey("pref_toolbar_default_corrected"))
         assertTrue(defaults.keys.all { it.startsWith("pref_") })
         assertFalse(defaults.keys.any { it.startsWith("cursor_scroll_") })
+        assertEquals("wmdx", PreferenceResetHelper.getDefaultValue("pref_markdown_profile"))
+        assertEquals(24, PreferenceResetHelper.getDefaultValue("pref_list_left_indent"))
     }
 
     private fun readDefaultsResource(): String {

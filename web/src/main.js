@@ -878,6 +878,21 @@ function findTaskMarkerForListMark(tree, listMarkTo, lineTo) {
   return taskMarker;
 }
 
+function listItemTextRange(tree, doc, line, markerEnd) {
+  let from = markerEnd;
+  tree.iterate({
+    from: markerEnd,
+    to: line.to,
+    enter(node) {
+      if (node.name === 'TaskMarker') from = Math.max(from, node.to);
+    }
+  });
+  while (from < line.to && /[ \t]/.test(doc.sliceString(from, from + 1))) {
+    from++;
+  }
+  return from < line.to ? { from, to: line.to } : null;
+}
+
 function wmdxOrderedListPositionIsExcluded(tree, position) {
   for (let node = tree.resolveInner(position, 1); node; node = node.parent) {
     if (
@@ -3759,6 +3774,13 @@ export const livePreviewPlugin = ViewPlugin.fromClass(class {
                   .range(node.to, taskMarker.from)
               );
             }
+            const textRange = listItemTextRange(tree, doc, line, node.to);
+            if (textRange) {
+              builder.push(
+                Decoration.mark({ class: 'cm-list-block-text' })
+                  .range(textRange.from, textRange.to)
+              );
+            }
           }
 
           if (
@@ -5123,6 +5145,13 @@ function buildHeightMapValue(state) {
           replacements.push(
             Decoration.mark({ class: 'cm-todo-bullet-separator' })
               .range(node.to, taskMarker.from)
+          );
+        }
+        const textRange = listItemTextRange(tree, doc, line, node.to);
+        if (textRange) {
+          replacements.push(
+            Decoration.mark({ class: 'cm-list-block-text' })
+              .range(textRange.from, textRange.to)
           );
         }
       }

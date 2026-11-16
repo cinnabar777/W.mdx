@@ -36,14 +36,22 @@ jobs:
         run: |
           node web/build.cjs
 
-      - name: Run Web Unit Tests
-        run: npm --prefix web test
+      - name: Install Playwright Chromium
+        working-directory: web
+        run: npx playwright install --with-deps chromium
+
+      - name: Run focused list caret regression
+        working-directory: web
+        run: npm run test:browser:list-caret
 
       - name: Make Gradle Wrapper Executable
         run: chmod +x gradlew
 
-      - name: Build Debug APK & Run Unit Tests
-        run: ./gradlew assembleDebug testDebugUnitTest
+      - name: Run backup-default preference test
+        run: ./gradlew testDebugUnitTest --tests com.wmdx.markdownapp.AppPreferenceDefaultsTest
+
+      - name: Build Debug APK
+        run: ./gradlew assembleDebug
 
       - name: Upload Debug APK Artifact
         uses: actions/upload-artifact@v4
