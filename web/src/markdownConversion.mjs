@@ -1068,6 +1068,13 @@ function convertInlineHtmlToMarkdown(line, warnings, Parser) {
       if (isEscapedMarkdownDelimiter(wholeText, offset)) return source;
       const image = new Parser().parseFromString(source, 'text/html').querySelector('img');
       if (!image) return source;
+      if (image.hasAttribute('title')) {
+        addWarning(
+          warnings,
+          'HTML image tooltip titles have no native Wmdx field; raw image HTML was preserved.'
+        );
+        return protect(source);
+      }
       if (image.hasAttribute('style')) warnInlineHtmlStyle('style=', warnings);
       return htmlImageResource(image, warnings) || source;
     });
@@ -1150,7 +1157,10 @@ function protectTopLevelMarkdownHtmlBlocks(source, format, Parser, warnings) {
         table &&
         !table.querySelector('thead, th')
       );
-      const hasActiveElement = /<\s*(script|style|iframe|object|embed|form)\b/i.test(raw);
+      const activeElement = raw.match(
+        /<\s*(script|style|iframe|object|embed|form)\b/i
+      )?.[1]?.toLowerCase();
+      const hasActiveElement = Boolean(activeElement);
       const containsMarkdownTextSyntax = Boolean(
         document &&
         !hasActiveElement &&
@@ -1162,7 +1172,19 @@ function protectTopLevelMarkdownHtmlBlocks(source, format, Parser, warnings) {
         /^\s*(?:<!--|<!\[CDATA\[|<\?)/i.test(raw);
       const preserveForContext =
         touchesMarkdownContent && !hasActiveElement && !isCommentOrDeclaration;
-      if (
+      const isProcessingInstruction = /^\s*<\?/.test(raw);
+      if (isProcessingInstruction) {
+        let marker;
+        do {
+          marker = `\uE020MDXHTMLBLOCK${markerIndex++}\uE021`;
+        } while (source.includes(marker));
+        replacements.push({ marker, value: raw });
+        replacement = marker;
+        addWarning(
+          warnings,
+          'An HTML block without convertible text was preserved unchanged.'
+        );
+      } else if (
         standaloneHeaderlessTable ||
         containsMarkdownTextSyntax ||
         containsMarkdownBlockSyntax ||
@@ -1186,6 +1208,9 @@ function protectTopLevelMarkdownHtmlBlocks(source, format, Parser, warnings) {
       } else {
         try {
           const converted = convertFromHtml(raw, Parser);
+          if (activeElement) {
+            addWarning(warnings, `Active HTML element <${activeElement}> was omitted.`);
+          }
           let marker;
           do {
             marker = `\uE020MDXHTMLBLOCK${markerIndex++}\uE021`;
@@ -1195,9 +1220,6 @@ function protectTopLevelMarkdownHtmlBlocks(source, format, Parser, warnings) {
           replacement = marker;
         } catch (error) {
           if (!String(error?.message).includes('No readable document content')) throw error;
-          const activeElement = raw.match(
-            /<\s*(script|style|iframe|object|embed|form)\b/i
-          )?.[1]?.toLowerCase();
           if (activeElement) {
             addWarning(warnings, `Active HTML element <${activeElement}> was omitted.`);
             replacement = '';
@@ -1243,6 +1265,15 @@ const RAW_HTML_BLOCK_START = new RegExp(
 );
 
 function isRawHtmlBlockLine(line, state) {
+  if (state.processingInstruction) {
+    state.processingInstruction = !line.includes('?>');
+    return true;
+  }
+  const instructionStart = line.indexOf('<?');
+  if (instructionStart >= 0) {
+    state.processingInstruction = !line.slice(instructionStart + 2).includes('?>');
+    return true;
+  }
   const opensBlock = RAW_HTML_BLOCK_START.test(line);
   if (!state.tags.length && !state.comment && !opensBlock && !line.includes('<!--')) {
     return false;
@@ -1268,8 +1299,16 @@ function isRawHtmlBlockLine(line, state) {
 }
 
 function protectRawHtmlBlockLines(lines, protectedLines) {
-  const state = { tags: [], comment: false };
+  const state = { tags: [], comment: false, processingInstruction: false };
   for (let index = 0; index < lines.length; index += 1) {
+    if (
+      protectedLines.has(index) &&
+      !state.tags.length &&
+      !state.comment &&
+      !state.processingInstruction
+    ) {
+      continue;
+    }
     if (isRawHtmlBlockLine(lines[index], state)) protectedLines.add(index);
   }
 }
