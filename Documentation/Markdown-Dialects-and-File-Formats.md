@@ -33,6 +33,32 @@ Use these primary sources when defining compatibility fixtures. A link to a spec
 - [GitHub Flavored Markdown specification](https://github.github.com/gfm/)
 - [Obsidian Flavored Markdown](https://obsidian.md/help/obsidian-flavored-markdown)
 
+## Reference implementations and libraries
+
+Use these projects as references for the behavior and tests they already solved. A passing test in another editor does not prove Wmdx compatibility. Check the relevant code, tests, license, runtime requirements, and bundle/APK cost before considering code reuse. The pinned CommonMark 0.31.2 specification and reference suite remain authoritative for CommonMark behavior.
+
+### Editor behavior and Android interaction
+
+- [MarkText for Android](https://github.com/Renakoni/marktext-android) (MIT) adapts the Muya live-preview editor for Android. Its tests cover caret following, IME visibility, selection lifecycle, source mode, table commands, document-provider I/O, and imported images. Consult it for mobile cursor, keyboard, table, and attachment workflows; its Vue/Capacitor/Muya architecture is not a drop-in replacement for Wmdx's CodeMirror/WebView editor.
+- [Hyphen](https://github.com/DenserMeerkat/hyphen) (Apache-2.0) is a Compose Multiplatform Markdown-native WYSIWYG editor. Its block, selection, history, clipboard, and Markdown serializer code/tests are useful references for editor state and undo; the Compose implementation is not directly reusable in the WebView editor.
+- [Compose Rich Editor](https://github.com/MohamedRejeb/compose-rich-editor) (Apache-2.0) calculates first-line and continuation-line indents from a list prefix and indent level. Use it as a reference for stable wrapped-list alignment, not as a dependency for the current CodeMirror renderer.
+- [MarkdownEditText](https://github.com/YahiaAngelo/MarkdownEditText) (Apache-2.0) uses Android text spans, including a measured `LeadingMarginSpan` for ordered-list markers, plus custom movement/selection handling. It is useful for native Android editing behavior, not WYSIWYG WebView layout.
+- [CKEditor 5 list editing](https://github.com/cinnabar777/ckeditor5/blob/master/packages/ckeditor5-list/src/list/listediting.ts) separates list type, indent, and item identity in its model. Use this as a design reference for semantic list state. GitHub reports no repository-wide SPDX license for this fork, so do not copy code until its applicable license is verified.
+- [Markor](https://github.com/gsantner/markor) is an Android text editor with Markdown syntax highlighting and a Flexmark-based converter. Use it to study source editing, file/paste workflows, and parser configuration; it is not a rendered WYSIWYG editor. GitHub reports no repository-wide SPDX license, so do not copy code until licensing is verified.
+
+### Parsing, rendering, conversion, and features
+
+- [remark-gfm](https://github.com/remarkjs/remark-gfm) (MIT) is a JavaScript GFM plugin covering tables, task lists, footnotes, strikethrough, and autolink literals. Evaluate it as a web-side parser/conversion comparison for demonstrated GFM gaps; it does not provide Wmdx rendering or editor interactions.
+- [Markwon](https://github.com/noties/Markwon) (Apache-2.0) renders Markdown to Android-native `Spanned` text without a WebView and has extension examples for HTML, images, tables, tasks, and code highlighting. Its README references CommonMark 0.28, so it is a rendering reference, not an oracle for the app's CommonMark 0.31.2 gate.
+- [flexmark-java](https://github.com/vsch/flexmark-java) (BSD-2-Clause) provides a Markdown AST/parser and HTML↔Markdown conversion modules. Its repository description references CommonMark 0.28; compare it against the pinned corpus and target features before considering it for conversion. A Java dependency would also need justification in the current JavaScript/WebView pipeline.
+- [obsidian-html](https://github.com/krissrex/obsidian-html) (MIT) exports Obsidian vault Markdown and linked resources to static HTML. Use it to inspect Obsidian HTML export conventions and resource handling; it is a Python vault exporter, not a general HTML-to-Markdown importer or Android runtime component.
+- [Obsidian Linter](https://github.com/platers/obsidian-linter) (MIT) has configurable, independently applied formatting rules. Use its rule catalog and conflict notes when designing Markdown lint settings; linting must remain separate from beautifying and must not silently rewrite documents.
+- [Mermaid](https://github.com/mermaid-js/mermaid) (MIT) renders text-based diagrams. If added, give it explicit Document Appearance controls, retain editable fenced source when rendering is off or unsupported, and measure bundle size before selecting a runtime build.
+
+### Reuse rule
+
+Prefer these references to inventing behavior, but do not transplant whole editors or parsers. For each proposed dependency, record the exact feature it solves, license compatibility, supported CommonMark/GFM/Obsidian behavior, Android/WebView compatibility, size impact, and the focused test that demonstrates a Wmdx gap is closed.
+
 ## Math and equation editing: not integrated
 
 The current codebase has no integrated math parser, renderer, or equation editor. LaTeX, AsciiMath, and Typst are candidate math notations or toolchains; a WYSIWYG equation editor is a separate authoring interface. None is currently promised by a Wmdx, CommonMark, GFM, or Obsidian profile.
