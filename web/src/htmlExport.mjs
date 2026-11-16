@@ -1,5 +1,5 @@
 import { marked } from 'marked';
-import CommonMark from 'commonmark';
+import { Parser as CommonMarkParser, HtmlRenderer as CommonMarkHtmlRenderer } from 'commonmark';
 import createDOMPurify from 'dompurify';
 import { convertFromMarkdown, exportMarkdown } from './markdownConversion.mjs';
 import { parseFootnotes } from './footnotes.js';
@@ -62,8 +62,8 @@ function createGfmRenderer() {
 
 function renderMarkdownForDialect(markdown, targetDialect) {
   if (targetDialect === 'commonmark') {
-    const parser = new CommonMark.Parser();
-    const renderer = new CommonMark.HtmlRenderer();
+    const parser = new CommonMarkParser();
+    const renderer = new CommonMarkHtmlRenderer();
     return renderer.render(parser.parse(markdown));
   }
   return marked.parse(markdown, {
