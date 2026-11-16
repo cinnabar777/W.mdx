@@ -1297,7 +1297,7 @@ function protectTopLevelMarkdownHtmlBlocks(source, format, Parser, warnings) {
       const containsMarkdownBlockSyntax =
         /^[ \t]{0,3}(?:`{3,}|~{3,})/m.test(raw);
       const isCommentOrDeclaration =
-        /^\s*(?:<!--|<!\[CDATA\[|<\?)/i.test(raw);
+        /^\s*(?:<!--|<!|<\?)/i.test(raw);
       const isProcessingInstruction = /^\s*<\?/.test(raw);
       const unclosedHtmlContainer = Boolean(
         containerTag &&

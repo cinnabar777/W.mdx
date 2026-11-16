@@ -71,7 +71,7 @@ const expectedHtmlInteropWarnings = new Map([
     number,
     [rawHtmlPreservedWarning]
   ]),
-  ...[179, 182, 183].map(number => [
+  ...[179, 181, 182, 183].map(number => [
     number,
     [unconvertedHtmlBlockWarning]
   ]),
@@ -801,15 +801,15 @@ test('selected CommonMark HTML cases round-trip through all flavors with explici
             ...commonMark.warnings
           ])
         ].sort();
-        assert.deepEqual(
-          warnings,
-          [...(expectedHtmlInteropWarnings.get(number) ?? [])].sort(),
-          `CM-EX-${number} warning/loss contract through ${target}`
-        );
         assert.equal(
           commonMark.markdown,
           example.markdown,
           `CM-EX-${number} must return byte-for-byte after ${target}`
+        );
+        assert.deepEqual(
+          warnings,
+          [...(expectedHtmlInteropWarnings.get(number) ?? [])].sort(),
+          `CM-EX-${number} warning/loss contract through ${target}`
         );
         const actualHtml = renderer.render(parser.parse(commonMark.markdown));
         assert.equal(
