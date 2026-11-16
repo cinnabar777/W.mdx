@@ -2735,6 +2735,7 @@ function importCommonMarkReferenceHtml(body, Parser, warnings, footnoteDefinitio
   const leadingNbspMarkers = new Map();
   const inlineCodeMarkers = new Map();
   const softBreakMarker = String.fromCharCode(0xE002) + 'WMDX_SOFT_BREAK' + String.fromCharCode(0xE003);
+  while (body.textContent?.includes(softBreakMarker)) softBreakMarker += String.fromCharCode(0xE105);
   const leadingNbspCharacter = String.fromCharCode(0x00A0);
   const blockStartTags = new Set([
     'blockquote', 'body', 'div', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'li', 'p', 'td', 'th'
@@ -2821,18 +2822,45 @@ function importCommonMarkReferenceHtml(body, Parser, warnings, footnoteDefinitio
     }
   });
   converter.escape = value => {
-    const source = String(value ?? '').split(softBreakMarker).join('\n');
-    return markdownText(source, {
+    const input = String(value ?? '');
+    const hasSoftBreak = input.includes(softBreakMarker);
+    const source = input.split(softBreakMarker).join('\n');
+    const escaped = markdownText(source, {
       escapeBlockSyntax: true,
       wmdxSyntax: true
-    }).replace(/\r?\n/g, softBreakMarker);
+    });
+    const escapeBlockStart = line => {
+      const leading = /^ {0,3}/.exec(line)?.[0] ?? '';
+      const rest = line.slice(leading.length);
+      let position = null;
+      if (/^(?:#{1,6}(?:[ \t]|$)|>(?:[ \t]|$)|[-+*](?:[ \t]|$)|\[[^\]\n]+\]:|[-*_]{3,}[ \t]*$|={1,}[ \t]*$)/.test(rest)) {
+        position = leading.length;
+      } else {
+        const ordered = /^\d{1,9}[.)](?=[ \t])/.exec(rest);
+        if (ordered) position = leading.length + ordered[0].length - 1;
+      }
+      if (position === null) return line;
+      const backslash = String.fromCharCode(92);
+      let backslashRun = 0;
+      for (let index = position - 1; index >= 0 && line[index] === backslash; index -= 1) backslashRun += 1;
+      return backslashRun % 2 === 1
+        ? line
+        : line.slice(0, position) + backslash + line.slice(position);
+    };
+    const serializedLines = escaped.split('\n').map(escapeBlockStart);
+    return serializedLines.join(hasSoftBreak ? softBreakMarker : '\n');
+  };
+  const safeEmphasisContent = (content, node) => {
+    if (node.querySelector('strong, b, em, i, a, code')) return content;
+    return content.replace(/\*/g, character => String.fromCharCode(92) + character);
   };
   converter.addRule('commonMarkEmphasis', {
     filter: ['em', 'i'],
-    replacement: content => {
-      const safeContent = content.replace(/\*/g, character => String.fromCharCode(92) + character);
-      return '*' + safeContent + '*';
-    }
+    replacement: (content, node) => '*' + safeEmphasisContent(content, node) + '*'
+  });
+  converter.addRule('commonMarkStrong', {
+    filter: ['strong', 'b'],
+    replacement: (content, node) => '**' + safeEmphasisContent(content, node) + '**'
   });
   converter.addRule('commonMarkLink', {
     filter: node => node.nodeName === 'A',
