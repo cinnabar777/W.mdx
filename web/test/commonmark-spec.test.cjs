@@ -949,9 +949,12 @@ test('CommonMark raw HTML semantic parity has explicit per-example pending cases
   }
 });
 
-test('CommonMark raw HTML semantic parity remains explicitly incomplete', () => {
-  assert.ok(parserComparableCases.length < commonmarkCases.length);
-  assert.ok(pendingHtmlSemanticCases.length > 0);
+test('CommonMark raw HTML semantic cases have no unclassified examples', () => {
+  assert.equal(
+    verifiedHtmlInteropExamples.size + pendingHtmlSemanticCases.length,
+    htmlInteropCases.length
+  );
+  assert.equal(pendingHtmlSemanticCases.length, 0);
   assert.ok(
     fs.existsSync(path.join(__dirname, 'fixtures/COMMONMARK-LICENSE.md')),
     'the upstream fixture attribution and license are present'

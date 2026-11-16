@@ -144,3 +144,45 @@ test('GFM raw-HTML tag-filter example remains outside the native parser corpus',
     }]
   );
 });
+
+test('GFM autolink examples preserve link targets without adding escapes', async t => {
+  const { JSDOM } = require('jsdom');
+  const { marked } = require('marked');
+  const { convertFromMarkdown, exportMarkdown } =
+    await import('../src/markdownConversion.mjs');
+  const DOMParser = new JSDOM('').window.DOMParser;
+  const summarize = html => {
+    const document = new DOMParser().parseFromString(html, 'text/html');
+    return {
+      text: document.body.textContent.replace(/\s+/g, ' ').trim(),
+      links: Array.from(document.querySelectorAll('a[href]'), anchor => [
+        anchor.textContent.replace(/\s+/g, ' ').trim(),
+        anchor.getAttribute('href')
+      ])
+    };
+  };
+  const examples = fixture.examples.filter(example => example.extension === 'autolink');
+  assert.equal(examples.length, 11);
+
+  for (const example of examples) {
+    await t.test(`GFM ${example.number}`, () => {
+      const imported = convertFromMarkdown(example.markdown, 'gfm');
+      const exported = exportMarkdown(imported.markdown, 'gfm');
+      const before = marked.parse(example.markdown, { gfm: true });
+      const after = marked.parse(exported.markdown, { gfm: true });
+
+      assert.deepEqual(imported.warnings, [], `GFM ${example.number} import warnings`);
+      assert.deepEqual(exported.warnings, [], `GFM ${example.number} export warnings`);
+      assert.equal(
+        exported.markdown,
+        example.markdown,
+        `GFM ${example.number} adds no unnecessary escapes or source changes`
+      );
+      assert.deepEqual(
+        summarize(after),
+        summarize(before),
+        `GFM ${example.number} preserves rendered autolink destinations`
+      );
+    });
+  }
+});

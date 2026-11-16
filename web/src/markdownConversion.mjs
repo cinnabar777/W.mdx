@@ -1384,6 +1384,10 @@ function protectObsidianCommonMarkReferenceCollisions(
   });
 }
 
+function protectBareAutolinks(text, protect) {
+  return text.replace(/(?:https?:\/\/|ftp:\/\/|www\.)[^\s<>]+/gi, protect);
+}
+
 function escapeDialectSpecificWmdxSyntax(line, format, commonMarkReferences = new Set()) {
   const protectedValues = [];
   let text = String(line ?? '');
@@ -1400,6 +1404,7 @@ function escapeDialectSpecificWmdxSyntax(line, format, commonMarkReferences = ne
     .replace(/<(?:img|br)\b[^>]*\/?>/gi, protect)
     .replace(/(`+)([\s\S]*?)\1/g, protect)
     .replace(/<(?:https?|ftp):\/\/[^>\s]+>|<mailto:[^>\s]+>|<[^\s<>@]+@[^\s<>@]+\.[^\s<>@]+>/gi, protect);
+  text = protectBareAutolinks(text, protect);
   text = protectHtmlTagTokens(text, protect);
   text = protectInlineMathSyntax(text, protect);
   if (format === 'commonmark') {
@@ -2623,6 +2628,7 @@ function convertWmdxInlineToMarkdown(line, dialect, warnings) {
       return marker;
     };
     let text = protectInlineMathSyntax(plainText, protect);
+    text = protectBareAutolinks(text, protect);
     text = text.replace(
       /(?<![\p{L}\p{N}\p{M}_\\])_([₀₁₂₃]?)(?![₀₁₂₃]_)(\S(?:[^\n]*?\S)?)_(?![\p{L}\p{N}\p{M}_])/gu,
       (_, style, content) => {
