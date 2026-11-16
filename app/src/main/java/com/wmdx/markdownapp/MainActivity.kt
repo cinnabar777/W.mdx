@@ -1635,6 +1635,10 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
             "line_numbers" to prefs.getString("pref_hotkey_line_numbers", "ctrl+alt+l"),
             "line_wrap" to prefs.getString("pref_hotkey_line_wrap", "ctrl+alt+w"),
             "toggleTableScroll" to prefs.getString("pref_hotkey_toggle_table_scroll", ""),
+            "syntaxExposureHidden" to prefs.getString("pref_hotkey_syntax_exposure_hidden", ""),
+            "syntaxExposureCaret" to prefs.getString("pref_hotkey_syntax_exposure_caret", ""),
+            "syntaxExposureLine" to prefs.getString("pref_hotkey_syntax_exposure_line", ""),
+            "syntaxExposureBlock" to prefs.getString("pref_hotkey_syntax_exposure_block", ""),
             "bold" to prefs.getString("pref_hotkey_bold", "ctrl+b"),
             "italic" to prefs.getString("pref_hotkey_italic", "ctrl+i"),
             "underline" to prefs.getString("pref_hotkey_underline", "ctrl+u"),
@@ -5714,6 +5718,20 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
                 PreferenceManager.getDefaultSharedPreferences(this@MainActivity)
                     .edit()
                     .putBoolean(key, enabled)
+                    .apply()
+            }
+        }
+
+        @JavascriptInterface
+        fun setMarkdownSyntaxExposure(scope: String) {
+            val safeScope = when (scope.lowercase()) {
+                "caret", "line", "block" -> scope.lowercase()
+                else -> "hidden"
+            }
+            runOnUiThread {
+                PreferenceManager.getDefaultSharedPreferences(this@MainActivity)
+                    .edit()
+                    .putString("pref_markdown_syntax_exposure", safeScope)
                     .apply()
             }
         }

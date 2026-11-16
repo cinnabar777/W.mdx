@@ -40,7 +40,9 @@ export const BOTTOM_TOOLBAR_GROUP_ITEM_IDS = Object.freeze({
   menu: Object.freeze([
     'newTab', 'newFile', 'openFile', 'saveFile', 'saveAsFile', 'saveTabs', 'saveAsTextPack', 'saveAsMdzip',
     'convertFromMarkdown', 'pasteFromDialect', 'exportMarkdown', 'lintMarkdown', 'formatJson',
-    'exportHtml', 'search', 'switchView', 'sourceLanguage', 'newWindow', 'settings'
+    'exportHtml', 'search', 'switchView', 'sourceLanguage',
+    'syntaxExposureHidden', 'syntaxExposureCaret', 'syntaxExposureLine', 'syntaxExposureBlock',
+    'newWindow', 'settings'
   ])
 });
 

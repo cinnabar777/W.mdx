@@ -324,6 +324,30 @@
         app:defaultValue="ctrl+shift+u" />
 
     <com.wmdx.markdownapp.ResetEditTextPreference
+        app:key="pref_hotkey_syntax_exposure_hidden"
+        app:title="Rendered Syntax: Hide"
+        app:summary="Key combination (leave empty to disable)"
+        app:defaultValue="" />
+
+    <com.wmdx.markdownapp.ResetEditTextPreference
+        app:key="pref_hotkey_syntax_exposure_caret"
+        app:title="Rendered Syntax: Caret"
+        app:summary="Key combination (leave empty to disable)"
+        app:defaultValue="" />
+
+    <com.wmdx.markdownapp.ResetEditTextPreference
+        app:key="pref_hotkey_syntax_exposure_line"
+        app:title="Rendered Syntax: Current Line"
+        app:summary="Key combination (leave empty to disable)"
+        app:defaultValue="" />
+
+    <com.wmdx.markdownapp.ResetEditTextPreference
+        app:key="pref_hotkey_syntax_exposure_block"
+        app:title="Rendered Syntax: Current Block"
+        app:summary="Key combination (leave empty to disable)"
+        app:defaultValue="" />
+
+    <com.wmdx.markdownapp.ResetEditTextPreference
         app:key="pref_hotkey_strikethrough"
         app:title="Strikethrough"
         app:defaultValue="ctrl+shift+x" />

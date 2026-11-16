@@ -146,7 +146,7 @@
             app:summary="Left margin / padding for lists"
             app:min="0"
             android:max="80"
-            app:defaultValue="24"
+            app:defaultValue="12"
             app:showSeekBarValue="true" />
 
         <com.wmdx.markdownapp.ResetSeekBarPreference

@@ -2,13 +2,16 @@ package com.wmdx.markdownapp
 
 import android.content.Context
 import androidx.preference.PreferenceManager
+import java.io.ByteArrayInputStream
+import java.util.Base64
+import java.util.zip.GZIPInputStream
 import org.json.JSONObject
 
 /**
  * Seeds first-install preferences from the supplied Wmdx settings backup.
- * Existing user settings are never overwritten. Custom font files, per-document
- * cursor state, obsolete keys, and the backup's personal toolbar layout are
- * deliberately not treated as app defaults.
+ * Existing user settings are never overwritten. Font-file references and
+ * per-document cursor state are excluded; every other backed-up app preference
+ * is retained, including the saved toolbar layout and custom icons.
  */
 object AppPreferenceDefaults {
     @Volatile
@@ -49,11 +52,7 @@ object AppPreferenceDefaults {
             if (
                 !key.startsWith("pref_") ||
                 key.startsWith("pref_font_file_") ||
-                "_font_file_" in key ||
-                key == "pref_toolbar_bottom_config" ||
-                key == "pref_list_wrap_under_text" ||
-                key == "pref_heading_override_defaults_migrated_v1" ||
-                key == "pref_toolbar_default_corrected"
+                "_font_file_" in key
             ) {
                 continue
             }
@@ -81,8 +80,13 @@ object AppPreferenceDefaults {
         return defaults
     }
 
+    internal fun decodeDefaultsPayload(encoded: String): String =
+        GZIPInputStream(
+            ByteArrayInputStream(Base64.getDecoder().decode(encoded.trim()))
+        ).bufferedReader().use { it.readText() }
+
     private fun readDefaults(context: Context): Map<String, Any> =
-        context.resources.openRawResource(R.raw.wmdx_default_preferences)
+        context.resources.openRawResource(R.raw.wmdx_default_preferences_gzip)
             .bufferedReader()
-            .use { parseDefaults(it.readText()) }
+            .use { parseDefaults(decodeDefaultsPayload(it.readText())) }
 }

@@ -8,6 +8,10 @@ import {
   normalizeMarkdownSyntaxExposureScope,
   syntaxExposureRangeIsActive
 } from './markdownSyntaxExposure.mjs';
+import {
+  getTableScrollPreferenceKey,
+  getTableScrollSurface
+} from './tableScrollPolicy.mjs';
 import { EditorView, keymap, highlightSpecialChars, drawSelection, dropCursor, rectangularSelection, crosshairCursor, highlightActiveLine, Decoration, ViewPlugin, WidgetType, lineNumbers } from '@codemirror/view';
 import { shouldRefreshHeightMapForWidget } from './widgetHeightChange.js';
 import { WordProcessorTableWidget, tableHeightEstimatesChanged, measureTableWidgetHeight } from './tableWidget.js';
@@ -317,12 +321,8 @@ let markdownIndentSpaces = getMarkdownIndentSpaces('1');
 
 function applyTableScrollSettingToCurrentDom() {
   const root = document;
-  const sourceView = currentModePreference === 'source';
-  const enabled = sourceView
-    ? tableScrollSourceEnabled
-    : tableScrollWysiwygEnabled;
-
   root.querySelectorAll('.cm-source-table-widget').forEach(widget => {
+    const enabled = tableScrollSourceEnabled;
     widget.dataset.horizontalScrollEnabled = String(enabled);
     const scroller = widget.querySelector('.cm-source-table-editor .cm-scroller');
     const content = widget.querySelector('.cm-source-table-editor .cm-content');
@@ -340,6 +340,7 @@ function applyTableScrollSettingToCurrentDom() {
   });
 
   root.querySelectorAll('.cm-wp-table-container').forEach(container => {
+    const enabled = tableScrollWysiwygEnabled;
     container.dataset.horizontalScrollEnabled = String(enabled);
     container.style.overflowX = enabled ? 'auto' : 'hidden';
     const table = container.querySelector('.cm-wp-table');
@@ -420,6 +421,10 @@ let customHotkeys = {
   toggle_toolbar: 'ctrl+t',
   line_wrap: 'ctrl+alt+w',
   toggleTableScroll: '',
+  syntaxExposureHidden: '',
+  syntaxExposureCaret: '',
+  syntaxExposureLine: '',
+  syntaxExposureBlock: '',
   open_with: 'ctrl+shift+o',
   line_numbers: 'ctrl+alt+l',
   bold: 'ctrl+b',
@@ -4818,6 +4823,30 @@ function shouldExposeTableSyntax(selection, doc, layout, table) {
   );
 }
 
+function isCurrentTableSyntaxExposed(view = activeAdapter?.view) {
+  if (
+    currentModePreference !== 'rendered' ||
+    activeSyntaxExposureScope === 'hidden' ||
+    !view?.state
+  ) return false;
+  const plan = markdownRenderPlan(view.state);
+  return plan.contextual && plan.renderedTables.some(table =>
+    shouldExposeTableSyntax(
+      view.state.selection.main,
+      view.state.doc,
+      plan.semantic,
+      table
+    )
+  );
+}
+
+function currentTableScrollSurface(view = activeAdapter?.view) {
+  return getTableScrollSurface({
+    mode: currentModePreference === 'source' ? 'source' : 'rendered',
+    syntaxExposed: isCurrentTableSyntaxExposed(view)
+  });
+}
+
 export function updateTableDocumentSelection(view) {
   if (!view || !view.dom) return;
 
@@ -5739,9 +5768,7 @@ export function buildPersistentLayoutDecorations(state) {
             to,
             language: createMarkdownLanguageExtension(true),
             highlightStyle: sourceHighlightStyle,
-            horizontalScrollEnabled: renderPlan.raw
-              ? tableScrollSourceEnabled
-              : tableScrollWysiwygEnabled
+            horizontalScrollEnabled: tableScrollSourceEnabled
           }),
           block: true
         }).range(from, to)
@@ -7775,6 +7802,10 @@ function setupGroupedControlBar() {
         { id: 'exportHtml', icon: svgIcons.exportHtml, title: 'Export HTML / MHTML', action: () => window.AndroidNative && window.AndroidNative.onNativeAction('export') },
         { id: 'search', icon: svgIcons.search, title: 'Find & Replace', action: () => { hidePopupStrip(); toggleFindAndReplaceBar(); } },
         { id: 'switchView', icon: svgIcons.switchView, title: 'Switch View Mode', action: () => openWithOtherEngine() },
+        { id: 'syntaxExposureHidden', icon: svgIcons.syntaxExposureHidden, title: 'Hide Rendered Syntax', command: 'syntaxExposureHidden', action: () => window.editorBridge.setMarkdownSyntaxExposure('hidden') },
+        { id: 'syntaxExposureCaret', icon: svgIcons.syntaxExposureCaret, title: 'Expose Syntax at Caret', command: 'syntaxExposureCaret', action: () => window.editorBridge.setMarkdownSyntaxExposure('caret') },
+        { id: 'syntaxExposureLine', icon: svgIcons.syntaxExposureLine, title: 'Expose Syntax on Line', command: 'syntaxExposureLine', action: () => window.editorBridge.setMarkdownSyntaxExposure('line') },
+        { id: 'syntaxExposureBlock', icon: svgIcons.syntaxExposureBlock, title: 'Expose Syntax in Block', command: 'syntaxExposureBlock', action: () => window.editorBridge.setMarkdownSyntaxExposure('block') },
         { id: 'sourceLanguage', icon: svgIcons.codeBlock, title: 'Source / Code Language', action: () => { hidePopupStrip(); openSourceLanguageDialog(); } },
         { id: 'newWindow', icon: svgIcons.newWindow, title: 'New Window', action: () => {
           hidePopupStrip();
@@ -8157,6 +8188,10 @@ function createToolbarActionRegistry() {
       { id: 'exportHtml', title: 'Export HTML / MHTML', icon: svgIcons.exportHtml, action: () => window.AndroidNative?.onNativeAction('export') },
       { id: 'search', title: 'Find & Replace', icon: svgIcons.search, action: () => { hidePopupStrip(); toggleFindAndReplaceBar(); } },
       { id: 'switchView', title: 'Switch View Mode', icon: svgIcons.switchView, action: () => openWithOtherEngine() },
+      { id: 'syntaxExposureHidden', title: 'Hide Rendered Syntax', icon: svgIcons.syntaxExposureHidden, command: 'syntaxExposureHidden', action: () => window.editorBridge.setMarkdownSyntaxExposure('hidden') },
+      { id: 'syntaxExposureCaret', title: 'Expose Syntax at Caret', icon: svgIcons.syntaxExposureCaret, command: 'syntaxExposureCaret', action: () => window.editorBridge.setMarkdownSyntaxExposure('caret') },
+      { id: 'syntaxExposureLine', title: 'Expose Syntax on Line', icon: svgIcons.syntaxExposureLine, command: 'syntaxExposureLine', action: () => window.editorBridge.setMarkdownSyntaxExposure('line') },
+      { id: 'syntaxExposureBlock', title: 'Expose Syntax in Block', icon: svgIcons.syntaxExposureBlock, command: 'syntaxExposureBlock', action: () => window.editorBridge.setMarkdownSyntaxExposure('block') },
       { id: 'sourceLanguage', title: 'Source / Code Language', icon: svgIcons.codeBlock, action: () => {
         hidePopupStrip();
         openSourceLanguageDialog();
@@ -10959,6 +10994,10 @@ function getToolbarSyntaxState(view) {
   state.todoList = todo;
   state.numberedList = numbered && !todo;
   state.bulletedList = bullet;
+  state.syntaxExposureHidden = markdownSyntaxExposureScope === 'hidden';
+  state.syntaxExposureCaret = markdownSyntaxExposureScope === 'caret';
+  state.syntaxExposureLine = markdownSyntaxExposureScope === 'line';
+  state.syntaxExposureBlock = markdownSyntaxExposureScope === 'block';
   return state;
 }
 
@@ -12398,6 +12437,22 @@ function setupKeyboardShortcuts() {
     } else if (parseAndMatchHotkey(e, customHotkeys.line_wrap)) {
       e.preventDefault();
       window.editorBridge.toggleLineWrap();
+    } else if (!focusedFormField &&
+      parseAndMatchHotkey(e, customHotkeys.syntaxExposureHidden)) {
+      e.preventDefault();
+      window.editorBridge.setMarkdownSyntaxExposure('hidden');
+    } else if (!focusedFormField &&
+      parseAndMatchHotkey(e, customHotkeys.syntaxExposureCaret)) {
+      e.preventDefault();
+      window.editorBridge.setMarkdownSyntaxExposure('caret');
+    } else if (!focusedFormField &&
+      parseAndMatchHotkey(e, customHotkeys.syntaxExposureLine)) {
+      e.preventDefault();
+      window.editorBridge.setMarkdownSyntaxExposure('line');
+    } else if (!focusedFormField &&
+      parseAndMatchHotkey(e, customHotkeys.syntaxExposureBlock)) {
+      e.preventDefault();
+      window.editorBridge.setMarkdownSyntaxExposure('block');
     } else if (
       !focusedFormField &&
       !e.target?.closest?.('.cm-wp-cell-editor') &&
@@ -12519,6 +12574,29 @@ window.editorBridge = {
   },
   getSyntaxExposureScope: function() {
     return activeSyntaxExposureScope;
+  },
+  setMarkdownSyntaxExposure: function(scope) {
+    const nextScope = normalizeMarkdownSyntaxExposureScope(scope);
+    const changed = nextScope !== markdownSyntaxExposureScope;
+    markdownSyntaxExposureScope = nextScope;
+    window.AndroidNative?.setMarkdownSyntaxExposure?.(nextScope);
+
+    if (currentModePreference === 'rendered') {
+      activeSyntaxExposureScope = nextScope;
+      const expectedPresentation = nextScope === 'hidden'
+        ? 'wysiwyg'
+        : 'live_preview';
+      if (currentEditorMode !== expectedPresentation) {
+        void setEditorMode('rendered', { preserveMarkdownPreference: true });
+      } else if (changed && activeAdapter?.view) {
+        dispatchWithScrollSnapshot(
+          activeAdapter.view,
+          heightMapRefreshEffect.of(null)
+        );
+      }
+    }
+    refreshToolbarSyntaxState();
+    return nextScope;
   },
   openSourceLanguageDialog: function() {
     return openSourceLanguageDialog();
@@ -13933,13 +14011,12 @@ window.editorBridge = {
     }
   },
   toggleTableScrolling: function() {
-    const sourceView = currentModePreference === 'source';
+    const surface = currentTableScrollSurface();
+    const sourceView = surface === 'source';
     const enabled = !(sourceView
       ? tableScrollSourceEnabled
       : tableScrollWysiwygEnabled);
-    const preferenceKey = sourceView
-      ? 'pref_table_scroll_source_enabled'
-      : 'pref_table_scroll_wysiwyg_enabled';
+    const preferenceKey = getTableScrollPreferenceKey(surface);
     if (sourceView) tableScrollSourceEnabled = enabled;
     else tableScrollWysiwygEnabled = enabled;
 

@@ -117,7 +117,7 @@ open class BaseSettingsFragment : PreferenceFragmentCompat(), SharedPreferences.
 
     private fun applyMarkdownProfileDefaults(group: androidx.preference.PreferenceGroup) {
         val storedPreferences = PreferenceManager.getDefaultSharedPreferences(requireContext())
-        val profile = storedPreferences.getString("pref_markdown_profile", "wmdx")
+        val profile = storedPreferences.getString("pref_markdown_profile", "gfm")
             ?.takeIf { it in setOf("wmdx", "commonmark", "gfm", "obsidian") }
             ?: "wmdx"
         val defaults = when (profile) {
@@ -1951,7 +1951,9 @@ class StylingControlbarFragment : StylingSettingsFragment() {
             "menu" to listOf(
                 "newTab", "newFile", "openFile", "saveFile", "saveAsFile", "saveTabs", "saveAsTextPack",
                 "saveAsMdzip", "convertFromMarkdown", "pasteFromDialect", "exportMarkdown", "lintMarkdown",
-                "formatJson", "exportHtml", "search", "switchView", "sourceLanguage", "newWindow", "settings"
+                "formatJson", "exportHtml", "search", "switchView", "sourceLanguage",
+                "syntaxExposureHidden", "syntaxExposureCaret", "syntaxExposureLine", "syntaxExposureBlock",
+                "newWindow", "settings"
             )
         )
         private val TOOLBAR_DELETABLE_KEY_IDS =
@@ -1974,7 +1976,9 @@ class StylingControlbarFragment : StylingSettingsFragment() {
             "newTab", "newFile", "openFile", "saveFile", "saveAsFile", "saveTabs", "saveAsTextPack",
             "saveAsMdzip", "convertFromMarkdown", "pasteFromDialect", "exportMarkdown", "lintMarkdown",
             "formatJson",
-            "exportHtml", "search", "switchView", "sourceLanguage", "newWindow", "settings",
+            "exportHtml", "search", "switchView", "sourceLanguage",
+            "syntaxExposureHidden", "syntaxExposureCaret", "syntaxExposureLine", "syntaxExposureBlock",
+            "newWindow", "settings",
             "cut", "copy", "paste", "selectAll", TOOLBAR_TOGGLE_STYLE_ID
         )
         private val TOOLBAR_GESTURE_IDS = listOf(
@@ -4297,7 +4301,7 @@ class MarkdownDialectSettingsFragment : BaseSettingsFragment() {
         key: String
     ) {
         if (key != "pref_markdown_profile") return
-        val profile = sharedPreferences.getString("pref_markdown_profile", "wmdx")
+        val profile = sharedPreferences.getString("pref_markdown_profile", "gfm")
         for (preferenceKey in listOf(
             "pref_wmdx_color_syntax_enabled",
             "pref_obsidian_highlight_enabled",

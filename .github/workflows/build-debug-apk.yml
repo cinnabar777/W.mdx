@@ -44,6 +44,10 @@ jobs:
         working-directory: web
         run: npm run test:browser:list-caret
 
+      - name: Run exposed table scroll regression
+        working-directory: web
+        run: npm run test:browser:table-syntax-scroll
+
       - name: Make Gradle Wrapper Executable
         run: chmod +x gradlew
 

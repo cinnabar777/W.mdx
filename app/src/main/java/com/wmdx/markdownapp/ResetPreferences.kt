@@ -511,7 +511,7 @@ object PreferenceResetHelper {
             key == "pref_body_margin_right" -> 16
             key == "pref_heading_margin_left" -> 0
             key == "pref_heading_margin_right" -> 0
-            key == "pref_list_left_indent" -> 24
+            key == "pref_list_left_indent" -> 12
             key == "pref_list_inherit_body_typography" -> true
             key == "pref_list_font_family" -> "default"
             key == "pref_font_file_list" -> null
@@ -802,7 +802,7 @@ object PreferenceResetHelper {
             key == "pref_settings_bg_color" -> "#000000"
             key == "pref_hide_status_bar" -> false
             key == "pref_hide_nav_bar" -> false
-            key == "pref_markdown_profile" -> "wmdx"
+            key == "pref_markdown_profile" -> "gfm"
             key == "pref_editor_mode" -> "rendered"
             key == "pref_markdown_syntax_exposure" -> "hidden"
             key == "pref_export_format" -> "html"
@@ -818,6 +818,10 @@ object PreferenceResetHelper {
             key == "pref_hotkey_open_with" -> "ctrl+shift+o"
             key == "pref_hotkey_line_numbers" -> "ctrl+alt+l"
             key == "pref_hotkey_toggle_table_scroll" -> ""
+            key == "pref_hotkey_syntax_exposure_hidden" -> ""
+            key == "pref_hotkey_syntax_exposure_caret" -> ""
+            key == "pref_hotkey_syntax_exposure_line" -> ""
+            key == "pref_hotkey_syntax_exposure_block" -> ""
             key == "pref_hotkey_footnote" -> "ctrl+shift+f"
             key == "pref_footnote_inherit_body_typography" -> true
             key == "pref_footnote_font_weight" -> 400
@@ -1329,7 +1333,7 @@ object PreferenceResetHelper {
         } else {
             null
         }
-        val markdownProfile = prefs.getString("pref_markdown_profile", "wmdx")
+        val markdownProfile = prefs.getString("pref_markdown_profile", "gfm")
         val inheritedMarkdownSyntaxValue = when (key) {
             "pref_obsidian_highlight_enabled" -> markdownProfile == "obsidian"
             "pref_wmdx_color_syntax_enabled",

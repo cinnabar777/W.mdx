@@ -9,7 +9,7 @@
             app:summary="Sets default syntax recognition and authoring; feature-specific choices override this profile"
             app:entries="@array/markdown_profile_entries"
             app:entryValues="@array/markdown_profile_values"
-            app:defaultValue="wmdx" />
+            app:defaultValue="gfm" />
 
         <com.wmdx.markdownapp.ResetListPreference
             app:key="pref_markdown_syntax_exposure"

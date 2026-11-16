@@ -4,11 +4,11 @@ This is the element-level gate for CommonMark, GFM, Obsidian, Wmdx, HTML, and MH
 
 ## Current handoff
 
-The working branch is `main-clean-textpack-wmds`; the latest observed remote commit is `f479a42` (`Add opt-in list workflow tests and backup defaults`). The compatibility work is not complete, and no local changes described in this handoff have been pushed.
+The working branch is `main-clean-textpack-wmds`; the compatibility work is not complete. The focused table-scroll policy and full backup-default update are in progress locally and are not yet pushed.
 
-The user asked for list wrapping and toolbar behavior to be fixed, settings defaults to follow the supplied backup without importing font files, and GitHub checks to be focused instead of rerunning thousands of unrelated tests. The current local list change restores the earlier marker-plus-text-block layout for hanging wraps; it has not been verified yet. The automatic Debug workflow is being narrowed to build and upload the APK, while the changed behavior will be checked with a single focused browser interaction test on GitHub. No local tests or APK builds are being run.
+The user asked for backup settings to be applied except font files, exposed-table scrolling to use the Source setting, and direct toolbar/shortcut controls for rendered syntax exposure. The preference snapshot now includes all 259 eligible values and retains the saved custom toolbar, including its 11 icons; four syntax exposure controls are added to its “Switch View Mode” group. The table-scroll policy unit test passes locally. Android preference tests and the relevant focused browser interaction remain to be run; broad emulator tests are intentionally excluded.
 
-The supplied backup contains a damaged final color value and a personal toolbar layout; those are excluded from global defaults. The app defaults resource now keeps only the 119 recovered scalar preferences, while absent settings use the existing XML/Kotlin defaults. The primary flavor therefore stays Wmdx unless the user explicitly selects another flavor.
+The supplied backup is now treated as the source of truth for every scalar `pref_` key except font-file preferences. The default Markdown profile is GFM. The personal toolbar layout is intentionally retained as a requested app default; the backup’s font file itself is not bundled.
 
 The compatibility requirements below remain a validation specification, not evidence that the features have passed. CommonMark/GFM/Obsidian syntax, HTML/MHTML conversion, flavor round-trips, full-document MDZip fixtures, and the complete view/cursor/scroll matrix remain open. Record each verified behavior separately; a successful build or artifact is not an interaction pass.
 
@@ -78,6 +78,7 @@ Run each workflow in every applicable `VIEW-1` through `VIEW-5` configuration an
 
 - In Source/Code view, tap into a cell after preceding document content, type and replace text, delete text, press Enter, and use undo/redo. Assert the correct source offset changes and the surrounding document remains byte-for-byte intact. Repeat after switching from a rendered view.
 - In rendered views, enter and edit cells using real taps and keyboard input; test cell-to-cell movement, row/column insertion and deletion, alignment, clear-formatting, copy/paste, Escape/cancel, and every exposed table menu action. Assert the Markdown and rendered table after each operation.
+- When caret/line/block exposure turns a rendered table into its raw-Markdown editor, verify the complete table is one horizontal scroll surface, it does not widen or shift surrounding content, and it uses the Source/Code scroll setting—not the WYSIWYG setting. Toggle scrolling from the toolbar and confirm only the Source preference changes. Move the caret out and back in; the rendered table must return to using its independent WYSIWYG setting.
 - Cover empty and ordinary cells, escaped and literal pipes, emphasis, code, links, images, and other supported inline content. Explicitly mark block-level content that the active table syntax cannot contain as `N/A`; verify supported HTML-imported cell content separately.
 - Repeat applicable cases in all five views, dialect profiles, and valid nesting contexts. Verify view switches, save/reopen, and undo/redo preserve cell contents, alignment, and table boundaries.
 

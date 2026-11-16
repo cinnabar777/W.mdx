@@ -196,6 +196,10 @@ const PREVIEW_GROUP_ITEMS = {
     { id: 'formatJson', title: 'Format JSON', icon: svgIcons.format },
     { id: 'search', title: 'Find & Replace', icon: svgIcons.search },
     { id: 'switchView', title: 'Switch View Mode', icon: svgIcons.switchView },
+    { id: 'syntaxExposureHidden', title: 'Hide Rendered Syntax', icon: svgIcons.syntaxExposureHidden },
+    { id: 'syntaxExposureCaret', title: 'Expose Syntax at Caret', icon: svgIcons.syntaxExposureCaret },
+    { id: 'syntaxExposureLine', title: 'Expose Syntax on Line', icon: svgIcons.syntaxExposureLine },
+    { id: 'syntaxExposureBlock', title: 'Expose Syntax in Block', icon: svgIcons.syntaxExposureBlock },
     { id: 'newWindow', title: 'New Window', icon: svgIcons.newWindow },
     { id: 'settings', title: 'Settings', icon: svgIcons.settings }
   ]
