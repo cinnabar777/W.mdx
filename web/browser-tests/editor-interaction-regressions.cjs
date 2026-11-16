@@ -626,6 +626,12 @@ async function main() {
           .find(line => line.textContent.includes('Header stays beside its icon'));
         const icon = titleLine?.querySelector('.cm-callout-icon');
         const title = titleLine?.querySelector('.cm-callout-title-text');
+        const titleLineRect = titleLine?.getBoundingClientRect();
+        const titleLineScroller = titleLine?.closest('.cm-scroller');
+        const titleLineScrollerRect = titleLineScroller?.getBoundingClientRect();
+        const titleLineContentTop = titleLineRect && titleLineScroller && titleLineScrollerRect
+          ? titleLineRect.top - titleLineScrollerRect.top + titleLineScroller.scrollTop
+          : null;
         const iconRect = icon?.getBoundingClientRect();
         const titleRect = title?.getBoundingClientRect();
         const lines = [...document.querySelectorAll('.cm-line.cm-callout[data-callout-depth="2"]')]
@@ -650,6 +656,7 @@ async function main() {
             x: titleRect.x, right: titleRect.right, y: titleRect.y, height: titleRect.height
           },
           titleLineTop: titleLine?.getBoundingClientRect().top ?? null,
+          titleLineContentTop,
           nestedLines: lines.map(line => ({
             text: line.textContent.trim(),
             classes: [...line.classList],
@@ -683,6 +690,12 @@ async function main() {
           .find(line => line.textContent.includes('Header stays beside its icon'));
         const icon = titleLine?.querySelector('.cm-callout-icon')?.getBoundingClientRect();
         const title = titleLine?.querySelector('.cm-callout-title-text')?.getBoundingClientRect();
+        const titleLineRect = titleLine?.getBoundingClientRect();
+        const titleLineScroller = titleLine?.closest('.cm-scroller');
+        const titleLineScrollerRect = titleLineScroller?.getBoundingClientRect();
+        const titleLineContentTop = titleLineRect && titleLineScroller && titleLineScrollerRect
+          ? titleLineRect.top - titleLineScrollerRect.top + titleLineScroller.scrollTop
+          : null;
         return {
           icon: icon && { x: icon.x, right: icon.right, y: icon.y },
           title: title && { x: title.x, y: title.y },
@@ -699,9 +712,14 @@ async function main() {
           afterHeaderTap.selection.head <= headerStart + 'Header stays beside its icon'.length,
         `${view.name}: the tapped callout heading must retain the caret: ${JSON.stringify(afterHeaderTap)}`
       );
-      assert.ok(afterHeaderTap.titleLineTop !== null &&
-        Math.abs(afterHeaderTap.titleLineTop - calloutGeometry.titleLineTop) < 8,
-      `${view.name}: tapping the title jumped the header line: ${JSON.stringify({ before: calloutGeometry, after: afterHeaderTap })}`);
+      assert.ok(afterHeaderTap.titleLineContentTop !== null &&
+        Math.abs(afterHeaderTap.titleLineContentTop - calloutGeometry.titleLineContentTop) < 8,
+      `${view.name}: tapping the title changed its position within the editor: ${JSON.stringify({ before: calloutGeometry, after: afterHeaderTap })}`);
+      if (view.scope === 'hidden') {
+        assert.ok(Math.abs(afterHeaderTap.icon.x - calloutGeometry.icon.x) < 2 &&
+          Math.abs(afterHeaderTap.title.x - calloutGeometry.title.x) < 2,
+        `${view.name}: cursor entry shifted the hidden callout header horizontally: ${JSON.stringify({ before: calloutGeometry, after: afterHeaderTap })}`);
+      }
       if (afterHeaderTap.icon && afterHeaderTap.title) {
         assert.ok(Math.abs(afterHeaderTap.icon.y - afterHeaderTap.title.y) < 5,
           `${view.name}: tapping the title moved its icon off the header row: ${JSON.stringify(afterHeaderTap)}`);
