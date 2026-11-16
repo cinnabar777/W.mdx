@@ -1924,7 +1924,9 @@ function markdownText(value, {
     const numericListMarker = /(^|\n)([ \t]*)(\d+)([.)])(?=[ \t])/gm;
     for (const match of source.matchAll(numericListMarker)) {
       const lineStart = match.index + match[1].length;
-      if (softBreakLineStarts.has(lineStart) && Number(match[3]) !== 1) continue;
+      const followsParagraphBreak = softBreakLineStarts.has(lineStart) ||
+        (lineStart > 0 && source[lineStart - 1] === '\n');
+      if (followsParagraphBreak && Number(match[3]) !== 1) continue;
       escapePositions.add(lineStart + match[2].length + match[3].length);
     }
     addMatches(/(^|\n)([ \t]*)([A-Za-z]+)([.)])(?=[ \t])/gm, 4);
