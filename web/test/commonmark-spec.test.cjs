@@ -40,7 +40,7 @@ const expectedHtmlSecurityLosses = new Map([
     warning: 'Active HTML element <style> was omitted.'
   }],
   [178, {
-    markdown: '1\\. \\*bar*',
+    markdown: '1\\. \\*bar*\n',
     warning: 'Active HTML element <script> was omitted.'
   }]
 ]);
@@ -61,14 +61,12 @@ const expectedHtmlInteropWarnings = new Map([
   ...[21, 31, 148, 149, 150, 151, 155, 159, 160, 161, 162, 163, 164, 165, 166, 169, 171, 177, 185, 186, 189, 190, 191]
     .map(number => [number, [rawHtmlPreservedWarning]]),
   [180, [unconvertedHtmlBlockWarning]],
-  ...[152, 153, 154, 156, 157, 158, 184, 188].map(number => [
+  ...[153, 154, 184].map(number => [
     number,
     [rawHtmlPreservedWarning, unconvertedHtmlBlockWarning]
   ]),
-  ...[167, 179, 181, 182, 183].map(number => [
-    number,
-    [unconvertedHtmlBlockWarning]
-  ]),
+  [152, [rawHtmlPreservedWarning]],
+  [188, [rawHtmlPreservedWarning]],
   [174, [rawHtmlPreservedWarning]]
 ]);
 let wmdxMarkdown;

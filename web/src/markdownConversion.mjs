@@ -1231,20 +1231,19 @@ function protectTopLevelMarkdownHtmlBlocks(source, format, Parser, warnings) {
         raw += String(tokens[tokenIndex].raw ?? '');
       }
     }
-    if (
-      token.type === 'html' &&
-      token.block === true &&
-      /^\s*<details\b/i.test(raw) &&
-      htmlContainerBalance(raw, 'details') > 0
-    ) {
-      let balance = htmlContainerBalance(raw, 'details');
+    const containerTag =
+      token.type === 'html' && token.block === true
+        ? /^\s*<(details|div)\b/i.exec(raw)?.[1]?.toLowerCase()
+        : null;
+    if (containerTag && htmlContainerBalance(raw, containerTag) > 0) {
+      let balance = htmlContainerBalance(raw, containerTag);
       let grouped = raw;
       let endTokenIndex = tokenIndex;
       for (let next = tokenIndex + 1; next < tokens.length; next += 1) {
         const candidate = tokens[next];
         grouped += String(candidate.raw ?? '');
         if (candidate.type === 'html' && candidate.block === true) {
-          balance += htmlContainerBalance(candidate.raw, 'details');
+          balance += htmlContainerBalance(candidate.raw, containerTag);
         }
         if (balance <= 0) {
           endTokenIndex = next;
