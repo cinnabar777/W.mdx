@@ -130,7 +130,11 @@ test('CommonMark 0.31.2 core Markdown exports to reference-equivalent HTML', asy
     await t.test('CM-EX-' + String(example.example).padStart(3, '0') + ' ' + example.section,
       () => {
         const expectedHtml = renderer.render(parser.parse(example.markdown));
-        const result = renderMarkdownHtml(example.markdown, { profile: 'commonmark', window });
+        const result = renderMarkdownHtml(example.markdown, {
+          profile: 'commonmark',
+          sourceDialect: 'commonmark',
+          window
+        });
         assert.equal(
           canonicalizeRenderedHtml(result.html, template),
           canonicalizeRenderedHtml(expectedHtml, template),
