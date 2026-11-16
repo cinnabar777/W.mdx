@@ -1061,7 +1061,8 @@ function convertObsidianCallouts(lines, protectedLines, format) {
   return output;
 }
 
-function convertInlineHtmlToMarkdown(line, warnings, Parser) {
+function convertInlineHtmlToMarkdown(line, warnings, Parser, options = {}) {
+  if (options.preserveUnsupportedHtmlAsRaw) return String(line ?? '');
   const protectedValues = [];
   const protect = value => {
     const marker = `\uE010${protectedValues.length}\uE011`;
@@ -1686,7 +1687,9 @@ export function convertFromMarkdown(source, format = 'commonmark', options = {})
       }
       let text = escapeDialectSpecificWmdxSyntax(line, format, commonMarkReferences);
       text = escapeForeignCalloutMarkers(text, format);
-      text = convertInlineHtmlToMarkdown(text, warnings, htmlParser);
+      text = convertInlineHtmlToMarkdown(text, warnings, htmlParser, {
+      preserveUnsupportedHtmlAsRaw
+    });
       if (format === 'obsidian') {
         text = convertObsidianLinksToWmdx(text, warnings);
       }
