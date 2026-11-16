@@ -601,7 +601,12 @@ async function main() {
 
       await setDocument(page, calloutSource, { ...view, profile: 'obsidian' });
       await page.evaluate(position => {
-        window.editorBridge.applyAllPreferences({ pref_body_font_size: 24 });
+        window.editorBridge.applyAllPreferences({
+          pref_body_font_size: 24,
+          pref_callout_syntax_enabled: true,
+          pref_callout_syntax_wmdx_enabled: false,
+          pref_callout_syntax_obsidian_enabled: true
+        });
         window.editorBridge.setSelectionState(
           JSON.stringify({ anchor: position, head: position })
         );
