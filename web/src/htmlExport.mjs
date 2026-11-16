@@ -675,6 +675,16 @@ export function renderMarkdownHtml(source, {
     if (node.nodeName === 'A' && data.attrName === 'href' && /^obsidian:/i.test(data.attrValue)) {
       data.keepAttr = isSafeObsidianOpenUri(data.attrValue);
     }
+    if (node.nodeName === 'A' && data.attrName === 'href') {
+      const href = data.attrValue;
+      const knownSafeScheme = /^(?:https?|ftp|mailto|tel|callto|sms|cid|xmpp|matrix):/i.test(href);
+      const specialSanitizedScheme = /^(?:obsidian|data):/i.test(href);
+      const hasScheme = /^[a-z][a-z0-9+.-]*:/i.test(href);
+      if (hasScheme && !knownSafeScheme && !specialSanitizedScheme && node.textContent !== href) {
+        // Keep a nonstandard CommonMark autolink only when its destination is visibly shown.
+        data.keepAttr = false;
+      }
+    }
     if (node.nodeName === 'A' && data.attrName === 'href' && /^data:/i.test(data.attrValue)) {
       data.keepAttr = isSafeAttachmentDataUri(data.attrValue);
     }

@@ -2834,6 +2834,30 @@ function importCommonMarkReferenceHtml(body, Parser, warnings, footnoteDefinitio
       return '*' + safeContent + '*';
     }
   });
+  converter.addRule('commonMarkLink', {
+    filter: node => node.nodeName === 'A',
+    replacement: (content, node) => {
+      if (!node.hasAttribute('href')) return content;
+      let safeLabel = '';
+      let backslashRun = 0;
+      const backslash = String.fromCharCode(92);
+      for (const character of content) {
+        if (character === '[' || character === ']') {
+          if (backslashRun % 2 === 0) safeLabel += backslash;
+          safeLabel += character;
+          backslashRun = 0;
+          continue;
+        }
+        safeLabel += character;
+        backslashRun = character === backslash ? backslashRun + 1 : 0;
+      }
+      const href = node.getAttribute('href') ?? '';
+      const title = node.hasAttribute('title')
+        ? ' ' + String.fromCharCode(34) + escapeMarkdownField(node.getAttribute('title'), { escapeCharacters: String.fromCharCode(34) }) + String.fromCharCode(34)
+        : '';
+      return '[' + (safeLabel || markdownText(href)) + '](' + markdownLinkDestination(href) + title + ')';
+    }
+  });
   let literalBangMarker = String.fromCharCode(0xE000) + 'WMDX_LITERAL_BANG' + String.fromCharCode(0xE001);
   while (body.textContent?.includes(literalBangMarker)) {
     literalBangMarker += String.fromCharCode(0xE001);
