@@ -1206,7 +1206,7 @@ function htmlContainerBalance(source, tagName) {
   return balance;
 }
 
-function protectTopLevelMarkdownHtmlBlocks(source, format, Parser, warnings) {
+function protectTopLevelMarkdownHtmlBlocks(source, format, Parser, warnings, { preserveRawHtmlContainers = false } = {}) {
   if (!Parser) return { source, restore: text => text };
   const tokens = marked.lexer(source, { gfm: format !== 'commonmark' });
   const replacements = [];
@@ -1309,7 +1309,15 @@ function protectTopLevelMarkdownHtmlBlocks(source, format, Parser, warnings) {
       const preserveForContext =
         (touchesMarkdownContent && !hasActiveElement && !isCommentOrDeclaration) ||
         (unclosedHtmlContainer && !hasActiveElement);
-      if (isProcessingInstruction || isCommentOrDeclaration) {
+      if (preserveRawHtmlContainers && (containerTag === 'div' || containerTag === 'section')) {
+        let marker;
+        do {
+          marker = `\uE020MDXHTMLBLOCK${markerIndex++}\uE021`;
+        } while (source.includes(marker));
+        replacements.push({ marker, value: raw });
+        replacement = marker;
+        addWarning(warnings, `HTML container <${containerTag}> was preserved as raw markup during import.`);
+      } else if (isProcessingInstruction || isCommentOrDeclaration) {
         let marker;
         do {
           marker = `\uE020MDXHTMLBLOCK${markerIndex++}\uE021`;
@@ -1343,7 +1351,9 @@ function protectTopLevelMarkdownHtmlBlocks(source, format, Parser, warnings) {
         );
       } else {
         try {
-          const converted = convertFromHtml(raw, Parser);
+          const converted = convertFromHtml(raw, Parser, {
+            preserveRawHtmlContainers
+          });
           if (activeElement) {
             addWarning(warnings, `Active HTML element <${activeElement}> was omitted.`);
           }
@@ -1634,7 +1644,9 @@ export function convertFromMarkdown(source, format = 'commonmark', options = {})
     ? null
     : options.DOMParser ?? globalThis.DOMParser;
   const protectedHtml = protectTopLevelMarkdownHtmlBlocks(
-    sourceText, format, htmlParser, warnings
+    sourceText, format, htmlParser, warnings, {
+      preserveRawHtmlContainers: options.preserveRawHtmlContainers === true
+    }
   );
   const normalizedSource = normalizeStandardMarkdownMarkers(protectedHtml.source);
   const converted = protectCodeFences(normalizedSource, (originalLines, protectedLines) => {
@@ -2675,7 +2687,10 @@ function htmlBlock(node, warnings, depth = 0, options = {}) {
     }).filter(Boolean).join('\n');
   }
   if (tag === 'li') return children().join(' ');
-  if (tag === 'div' || tag === 'section') return serializeSafeHtmlBlock(node, warnings);
+  if (
+    preserveRawHtmlContainers &&
+    (tag === 'div' || tag === 'section')
+  ) return serializeSafeHtmlBlock(node, warnings);
   return children().join('');
 }
 
@@ -2814,10 +2829,16 @@ function isCommonMarkReferenceHtml(body) {
   return true;
 }
 
-function importCommonMarkReferenceHtml(body, Parser, warnings, footnoteDefinitions) {
+function importCommonMarkReferenceHtml(
+  body, Parser, warnings, footnoteDefinitions, preserveRawHtmlContainers = false
+) {
   const unorderedListMarkerState = { lastByIndent: new Map() };
   const orderedListDelimiters = new WeakMap();
-  const blockOptions = { unorderedListMarkerState, preserveCodeBlockText: true };
+  const blockOptions = {
+    unorderedListMarkerState,
+    preserveCodeBlockText: true,
+    preserveRawHtmlContainers
+  };
   const leadingNbspMarkers = new Map();
   const leadingTabMarkers = new Map();
   const literalBlockStartMarkers = new Map();
@@ -3195,7 +3216,10 @@ function importCommonMarkReferenceHtml(body, Parser, warnings, footnoteDefinitio
       ? '&nbsp;' + line.slice(1)
       : line)
   );
-  const imported = convertFromMarkdown(markdownSource, 'commonmark', { DOMParser: Parser });
+  const imported = convertFromMarkdown(markdownSource, 'commonmark', {
+    DOMParser: Parser,
+    preserveRawHtmlContainers
+  });
   const markdown = [imported.markdown, ...footnoteDefinitions]
     .filter(Boolean)
     .join('\n\n');
@@ -3210,7 +3234,8 @@ export function convertFromHtml(
   {
     embeddedResources = null,
     baseLocation = '',
-    resolveEmbeddedResource = null
+    resolveEmbeddedResource = null,
+    preserveRawHtmlContainers = true
   } = {}
 ) {
   if (typeof Parser !== 'function') {
@@ -3235,12 +3260,15 @@ export function convertFromHtml(
   }
   const hasEmbeddedResources = embeddedResources && Object.keys(embeddedResources).length > 0;
   if (!hasEmbeddedResources && isCommonMarkReferenceHtml(body)) {
-    return importCommonMarkReferenceHtml(body, Parser, warnings, footnotes.definitions);
+    return importCommonMarkReferenceHtml(
+      body, Parser, warnings, footnotes.definitions, preserveRawHtmlContainers
+    );
   }
   const unorderedListMarkerState = { lastByIndent: new Map() };
   const mainMarkdown = Array.from(body.childNodes)
     .map(node => htmlBlock(node, warnings, 0, {
-      unorderedListMarkerState
+      unorderedListMarkerState,
+      preserveRawHtmlContainers
     }))
     .filter(Boolean)
     .join('\n\n')
