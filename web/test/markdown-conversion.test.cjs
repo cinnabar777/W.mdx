@@ -146,11 +146,11 @@ test('top-level raw HTML blocks in Markdown use semantic HTML import without tou
     );
     assert.match(
       rawAnchor.markdown,
-      /\[\*\*the guide\*\*\]\(\/docs\/my%20\(file\)\.md\)/
+      /\[\*\*the guide\*\*\]\(\/docs\/my%20\(file\)\.md "Tooltip"\)/
     );
     assert.match(rawAnchor.markdown, /escaped \\<a href="\/literal">text<\/a>/);
     assert.match(rawAnchor.markdown, /`<a href="\/code">code<\/a>`/);
-    assert.ok(rawAnchor.warnings.some(warning => warning.includes('tooltip titles')));
+    assert.equal(rawAnchor.warnings.some(warning => warning.includes('tooltip titles')), false);
 
     const inlineMedia = convertFromMarkdown(
       'Listen <audio src="assets/voice.ogg"></audio> then ' +
@@ -457,6 +457,46 @@ test('Markdown export uses media elements and attachment links for embedded reso
   );
 });
 
+test('Markdown dialects use native image syntax when size and alignment are absent', async () => {
+  const { exportMarkdown } = await import('../src/markdownConversion.mjs');
+  const source = [
+    '![assets/pixel.png|Pixel||]',
+    '![https://example.test/pixel.png|Remote pixel||]',
+    '![https://images.example.test/640x240/png|Extensionless endpoint pixel||]',
+    '![data:image/png;base64,AQIDBA==|Embedded pixel||]'
+  ].join('\n');
+  const expectedStandard = [
+    '![Pixel](assets/pixel.png)',
+    '![Remote pixel](https://example.test/pixel.png)',
+    '![Extensionless endpoint pixel](https://images.example.test/640x240/png)',
+    '![Embedded pixel](data:image/png;base64,AQIDBA==)'
+  ].join('\n');
+
+  for (const dialect of ['commonmark', 'gfm']) {
+    const result = exportMarkdown(source, dialect);
+    assert.equal(result.markdown, expectedStandard, `${dialect} image syntax`);
+    assert.deepEqual(result.warnings, []);
+  }
+
+  const obsidian = exportMarkdown(source, 'obsidian');
+  assert.equal(
+    obsidian.markdown,
+    '![[assets/pixel.png|Pixel]]\n' +
+      '![Remote pixel](https://example.test/pixel.png)\n' +
+      '![Extensionless endpoint pixel](https://images.example.test/640x240/png)\n' +
+    '![Embedded pixel](data:image/png;base64,AQIDBA==)'
+  );
+  assert.deepEqual(obsidian.warnings, []);
+});
+
+test('An unmatched math fence does not shield later Markdown from export', async () => {
+  const { exportMarkdown } = await import('../src/markdownConversion.mjs');
+  const source = '$$\nAn incomplete math block.\n\n![assets/pixel.png|Pixel||]';
+  const result = exportMarkdown(source, 'commonmark');
+
+  assert.match(result.markdown, /!\[Pixel\]\(assets\/pixel\.png\)/);
+});
+
 test('Obsidian inline footnotes warn when exported to a dialect without footnotes', async () => {
   const { exportMarkdown } = await import('../src/markdownConversion.mjs');
   const source = 'A note^[inline detail] remains attached to its sentence.';
@@ -518,7 +558,9 @@ test('Markdown export maps Wmdx headings, links, tables, and callout states by t
     'H~2~O and ~~removed~~.',
     '',
     '±warning- Read carefully',
-    '  This body is folded.'
+    '  This body is folded.',
+    '',
+    '> .2 Heading inside a quote'
   ].join('\n');
 
   const commonmark = exportMarkdown(source, 'commonmark');
@@ -533,6 +575,7 @@ test('Markdown export maps Wmdx headings, links, tables, and callout states by t
   assert.match(commonmark.markdown, /- <input type="checkbox" disabled checked> Complete a task/);
   assert.match(commonmark.markdown, /H<sub>2<\/sub>O and <del>removed<\/del>\./);
   assert.match(commonmark.markdown, /> \*\*Read carefully\*\*/);
+  assert.match(commonmark.markdown, /^> ## Heading inside a quote$/m);
   assert.ok(!commonmark.warnings.some(warning => warning.includes('Pipe tables')));
   assert.ok(commonmark.warnings.some(warning => warning.includes('alphabetic and Roman')));
   assert.ok(commonmark.warnings.some(warning => warning.includes('CommonMark has no task-list')));
@@ -713,7 +756,7 @@ test('MHTML absolute same-document TOC URLs re-import as flavor-native heading l
   assert.doesNotMatch(obsidian.markdown, /appassets\.androidplatform\.net/);
 });
 
-test('HTML conversion reports tooltip and CSS losses that Markdown cannot represent', async () => {
+test('HTML conversion preserves link titles and reports unrepresentable CSS loss', async () => {
   const { JSDOM } = require('jsdom');
   const { convertFromHtml } = await import('../src/markdownConversion.mjs');
   const Parser = new JSDOM('').window.DOMParser;
@@ -723,9 +766,8 @@ test('HTML conversion reports tooltip and CSS losses that Markdown cannot repres
     Parser
   );
 
-  assert.match(result.markdown, /\[Link\]\(https:\/\/example\.test\)/);
-  assert.doesNotMatch(result.markdown, /Link tooltip/);
-  assert.ok(result.warnings.some(warning => warning.includes('tooltip titles')));
+  assert.match(result.markdown, /\[Link\]\(https:\/\/example\.test "Link tooltip"\)/);
+  assert.equal(result.warnings.some(warning => warning.includes('tooltip titles')), false);
   assert.ok(result.warnings.some(warning => warning.includes('inline CSS')));
 });
 

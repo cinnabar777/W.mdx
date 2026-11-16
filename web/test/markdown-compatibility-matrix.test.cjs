@@ -308,8 +308,8 @@ test('standalone MHTML images and attachments survive each flavor HTML round tri
         if (resource.kind === 'image') {
           assert.deepEqual(
             rendered.warnings,
-            ['Raw HTML was preserved during Markdown conversion; unconverted tags may not render like the source dialect.'],
-            `${profile} image HTML fallback warning`
+            [],
+            `${profile} image HTML warnings`
           );
         } else {
           assert.deepEqual(rendered.warnings, [], `${profile} HTML warnings`);

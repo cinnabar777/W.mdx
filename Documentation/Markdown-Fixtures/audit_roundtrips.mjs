@@ -3,7 +3,11 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { JSDOM } from 'jsdom';
 import { renderMarkdownHtml } from '../../web/src/htmlExport.mjs';
-import { convertFromMarkdown, exportMarkdown } from '../../web/src/markdownConversion.mjs';
+import {
+  convertFromHtml,
+  convertFromMarkdown,
+  exportMarkdown
+} from '../../web/src/markdownConversion.mjs';
 
 const root = path.dirname(fileURLToPath(import.meta.url));
 const fixtures = [
@@ -23,18 +27,80 @@ function canonicalizeHtml(html) {
 
   const serialize = node => {
     if (node.nodeType === 3) {
-      const value = node.nodeValue.replace(/\s+/g, ' ');
+      let source = node.nodeValue;
+      const parentTag = node.parentElement?.tagName.toLowerCase();
+      if (['blockquote', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
+        'li', 'p', 'pre', 'summary', 'td', 'th'].includes(parentTag)) {
+        if (node === node.parentElement.firstChild) source = source.trimStart();
+        if (node === node.parentElement.lastChild) source = source.trimEnd();
+      }
+      if (
+        node.nextSibling?.nodeType === 1 &&
+        ['div', 'span'].includes(node.nextSibling.tagName.toLowerCase()) &&
+        node.nextSibling.childNodes.length === 0
+      ) {
+        source = source.trimEnd();
+      }
+      const value = source.replace(/\s+/g, ' ');
+      if (
+        !value.trim() &&
+        ['b', 'del', 'em', 'i', 'kbd', 'mark', 's', 'span', 'strong', 'u']
+          .includes(parentTag)
+      ) {
+        return null;
+      }
       return value ? ['text', value] : null;
     }
     if (node.nodeType !== 1) return null;
 
     const tag = node.tagName.toLowerCase();
+    if (
+      node.childNodes.length === 0 &&
+      (
+        ['b', 'del', 'em', 'i', 'kbd', 'mark', 's', 'span', 'strong', 'u']
+          .includes(tag) ||
+        (tag === 'div' &&
+          (!node.hasAttribute('align') || node.getAttribute('align') === ''))
+      )
+    ) {
+      return null;
+    }
     const attributes = [...node.attributes]
       .filter(attribute => !attribute.name.startsWith('data-wmdx-'))
       .map(attribute => [attribute.name, attribute.value])
       .sort(([left], [right]) => left.localeCompare(right));
-    let children = [...node.childNodes].map(serialize).filter(Boolean);
-    if (['blockquote', 'li', 'ol', 'p', 'ul'].includes(tag)) {
+    const plainPreCode = tag === 'pre' &&
+      node.childNodes.length === 1 &&
+      node.firstChild.nodeType === 1 &&
+      node.firstChild.tagName.toLowerCase() === 'code' &&
+      !node.firstChild.hasAttribute('class');
+    const tableRows = tag === 'table'
+      ? [...node.children].flatMap(child =>
+        ['thead', 'tbody', 'tfoot'].includes(child.tagName.toLowerCase())
+          ? [...child.children]
+          : [child]
+      )
+      : null;
+    let children = (plainPreCode
+      ? [...node.firstChild.childNodes]
+      : tableRows ?? [...node.childNodes]).map(serialize).filter(Boolean);
+    if (
+      ['b', 'del', 'em', 'i', 'kbd', 'mark', 's', 'span', 'strong', 'u'].includes(tag) &&
+      children.length === 0
+    ) {
+      return null;
+    }
+    if (tag === 'pre' && plainPreCode) {
+      children = children.map(child =>
+        Array.isArray(child) && child[0] === 'text'
+          ? ['text', child[1].trimEnd()]
+          : child
+      ).filter(child => child?.[1]);
+    }
+    if ([
+      'blockquote', 'details', 'div', 'figure', 'li', 'ol',
+      'p', 'table', 'tbody', 'td', 'tfoot', 'th', 'thead', 'tr', 'ul'
+    ].includes(tag)) {
       children = children.filter(child =>
         child[0] !== 'text' || child[1].trim()
       );
@@ -177,6 +243,71 @@ function warningsFor(route) {
   return [...new Set(warnings)];
 }
 
+const fixtureAssetMimeTypes = new Map([
+  ['.gif', 'image/gif'],
+  ['.jpeg', 'image/jpeg'],
+  ['.jpg', 'image/jpeg'],
+  ['.mp3', 'audio/mpeg'],
+  ['.mp4', 'video/mp4'],
+  ['.ogg', 'audio/ogg'],
+  ['.pdf', 'application/pdf'],
+  ['.png', 'image/png'],
+  ['.wav', 'audio/wav'],
+  ['.webm', 'video/webm'],
+  ['.webp', 'image/webp']
+]);
+const structuralSelectors = [
+  'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
+  'ol', 'ul', 'li', 'blockquote', 'table', 'tr',
+  'img', 'audio', 'video', 'pre', 'a'
+];
+
+function resolveFixtureAssetDataUri(fixtureName, reference) {
+  let decoded;
+  try {
+    decoded = decodeURIComponent(String(reference ?? '').split(/[?#]/, 1)[0]);
+  } catch {
+    return null;
+  }
+  const fixtureDirectory = path.join(root, fixtureName);
+  const filePath = path.resolve(fixtureDirectory, decoded);
+  if (
+    !filePath.startsWith(`${fixtureDirectory}${path.sep}`) ||
+    !fs.existsSync(filePath) ||
+    !fs.statSync(filePath).isFile()
+  ) {
+    return null;
+  }
+  const mimeType = fixtureAssetMimeTypes.get(path.extname(filePath).toLowerCase());
+  if (!mimeType) return null;
+  return `data:${mimeType};base64,${fs.readFileSync(filePath).toString('base64')}`;
+}
+
+function structureCounts(html) {
+  const document = new dom.window.DOMParser().parseFromString(html, 'text/html');
+  return Object.fromEntries(
+    structuralSelectors.map(selector => [selector, document.querySelectorAll(selector).length])
+  );
+}
+
+function missingImageAltCounts(beforeHtml, afterHtml) {
+  const countAlts = html => {
+    const document = new dom.window.DOMParser().parseFromString(html, 'text/html');
+    const counts = new Map();
+    for (const image of document.querySelectorAll('img')) {
+      const alt = image.hasAttribute('alt') ? image.getAttribute('alt') : '(alt missing)';
+      counts.set(alt, (counts.get(alt) ?? 0) + 1);
+    }
+    return counts;
+  };
+  const before = countAlts(beforeHtml);
+  const after = countAlts(afterHtml);
+  return [...before]
+    .flatMap(([alt, count]) =>
+      Array.from({ length: Math.max(0, count - (after.get(alt) ?? 0)) }, () => alt)
+    );
+}
+
 for (const [name, entry, sourceProfile] of fixtures) {
   if (!showAll && !selected.has(name)) continue;
   const original = fs.readFileSync(path.join(root, name, entry), 'utf8');
@@ -220,4 +351,55 @@ for (const [name, entry, sourceProfile] of fixtures) {
     console.log(warnings.length ? warnings.map(value => `- ${value}`).join('\n') : '- No conversion warnings.');
     console.log(comparison.hunks.length ? comparison.hunks.join('\n\n') : 'No source-line differences.');
   }
+
+  const htmlBefore = renderMarkdownHtml(original, {
+    profile: sourceProfile,
+    window: dom.window,
+    resolveAssetDataUri: reference => resolveFixtureAssetDataUri(name, reference)
+  });
+  const htmlImport = convertFromHtml(htmlBefore.html, dom.window.DOMParser, {
+    baseLocation: `https://fixture.test/${name}/${entry}`
+  });
+  const htmlExport = exportMarkdown(htmlImport.markdown, sourceProfile);
+  const htmlAfter = renderMarkdownHtml(htmlExport.markdown, {
+    profile: sourceProfile,
+    window: dom.window,
+    resolveAssetDataUri: reference => resolveFixtureAssetDataUri(name, reference)
+  });
+  const htmlComparison = firstDifference(
+    canonicalizeHtml(htmlBefore.html),
+    canonicalizeHtml(htmlAfter.html)
+  );
+  const beforeCounts = structureCounts(htmlBefore.html);
+  const afterCounts = structureCounts(htmlAfter.html);
+  const structuralChanges = Object.entries(beforeCounts)
+    .filter(([element, count]) => count !== afterCounts[element])
+    .map(([element, count]) => `${element} ${count}→${afterCounts[element]}`);
+  const missingAlts = missingImageAltCounts(htmlBefore.html, htmlAfter.html);
+  const htmlWarnings = warningsFor([
+    ['source HTML render', htmlBefore],
+    ['HTML import', htmlImport],
+    ['Markdown export', htmlExport],
+    ['returned HTML render', htmlAfter]
+  ]);
+
+  console.log(`\n## ${name}: ${sourceProfile} → semantic HTML → ${sourceProfile}`);
+  console.log(`Rendered HTML meaning: ${htmlComparison ? 'DIFFERENT' : 'same'}.`);
+  if (htmlComparison) {
+    console.log(`First HTML difference: ${JSON.stringify(htmlComparison)}`);
+  }
+  console.log(
+    structuralChanges.length
+      ? `Structural count changes: ${structuralChanges.join(', ')}.`
+      : 'Structural counts match for the tracked element types.'
+  );
+  console.log(
+    missingAlts.length
+      ? `Missing image alt entries: ${JSON.stringify(missingAlts)}.`
+      : 'No image alt entries were lost.'
+  );
+  console.log(`Unique conversion warnings: ${htmlWarnings.length}.`);
+  console.log(htmlWarnings.length
+    ? htmlWarnings.map(value => `- ${value}`).join('\n')
+    : '- No conversion warnings.');
 }

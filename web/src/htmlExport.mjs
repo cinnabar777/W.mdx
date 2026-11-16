@@ -384,6 +384,15 @@ function isSafeAttachmentDataUri(value) {
     .test(String(value ?? ''));
 }
 
+function isSafeImageDataUri(value) {
+  return /^data:image\/(?:avif|gif|jpeg|png|webp);base64,/i
+    .test(String(value ?? ''));
+}
+
+function isSafeObsidianOpenUri(value) {
+  return /^obsidian:\/\/open(?:[/?#]|$)/i.test(String(value ?? ''));
+}
+
 function normalizeProfileSource(source, profile) {
   if (profile === 'wmdx') return { markdown: String(source ?? ''), warnings: [] };
   return convertFromMarkdown(source, profile, { DOMParser: null });
@@ -538,19 +547,26 @@ export function renderMarkdownHtml(source, {
 
   const purifier = createDOMPurify(window);
   purifier.addHook('uponSanitizeAttribute', (node, data) => {
+    if (node.nodeName === 'A' && data.attrName === 'href' && /^obsidian:/i.test(data.attrValue)) {
+      data.keepAttr = isSafeObsidianOpenUri(data.attrValue);
+    }
     if (node.nodeName === 'A' && data.attrName === 'href' && /^data:/i.test(data.attrValue)) {
       data.keepAttr = isSafeAttachmentDataUri(data.attrValue);
+    }
+    if (node.nodeName === 'IMG' && data.attrName === 'src' && /^data:/i.test(data.attrValue)) {
+      data.keepAttr = isSafeImageDataUri(data.attrValue);
     }
   });
   const html = purifier.sanitize(parsed.body.innerHTML, {
     USE_PROFILES: { html: true },
+    ALLOWED_URI_REGEXP: /^(?:(?:(?:f|ht)tps?|mailto|tel|callto|sms|cid|xmpp|matrix):|obsidian:\/\/open(?:[/?#]|$)|[^a-z]|[a-z+.\-]+(?:[^a-z+.\-:]|$))/i,
     ADD_TAGS: ['audio', 'video', 'source', 'track', 'figure', 'figcaption', 'mark', 'details', 'summary'],
     ADD_ATTR: [
       'controls', 'preload', 'poster', 'width', 'height', 'download',
       'start', 'checked', 'disabled', 'colspan', 'rowspan',
       'data-wmdx-kind', 'data-wmdx-target'
     ],
-    ADD_DATA_URI_TAGS: ['audio', 'video', 'source', 'a'],
+    ADD_DATA_URI_TAGS: ['audio', 'video', 'source', 'a', 'img'],
     FORBID_TAGS: ['style', 'link', 'iframe', 'object', 'embed', 'form']
   });
   return {
