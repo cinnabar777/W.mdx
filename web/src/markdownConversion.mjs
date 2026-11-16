@@ -2303,7 +2303,6 @@ function htmlBlock(node, warnings, depth = 0, options = {}) {
     const looseList = listItems.some(item =>
       Array.from(item.children).some(child => child.tagName.toLowerCase() === 'p')
     );
-    let looseSpacingApplied = looseList && listItems.length > 1;
     return listItems
       .map(item => {
         let itemOrdinal = nextOrdinal;
@@ -2329,11 +2328,12 @@ function htmlBlock(node, warnings, depth = 0, options = {}) {
         );
         const bodyBlocks = [];
         let inlineBody = '';
+        let inlineBodyType = 'inline';
         let hasBlockContent = false;
         let inlineNodes = [];
-        const appendBlock = value => {
+        const appendBlock = (value, type = 'block') => {
           if (!value?.trim()) return;
-          bodyBlocks.push(value);
+          bodyBlocks.push({ value, type });
           hasBlockContent = true;
         };
         const flushInlineNodes = () => {
@@ -2347,8 +2347,12 @@ function htmlBlock(node, warnings, depth = 0, options = {}) {
             .trim();
           inlineNodes = [];
           if (!value) return;
-          if (!hasBlockContent && !inlineBody) inlineBody = value;
-          else appendBlock(value);
+          if (!hasBlockContent && !inlineBody) {
+            inlineBody = value;
+            inlineBodyType = 'inline';
+          } else {
+            appendBlock(value, 'paragraph');
+          }
         };
         for (const child of Array.from(item.childNodes)) {
           const childTag = child.nodeType === 1 ? child.tagName.toLowerCase() : '';
@@ -2365,7 +2369,7 @@ function htmlBlock(node, warnings, depth = 0, options = {}) {
                 ? line.slice(continuationIndent.length)
                 : line)
               .join('\n');
-            appendBlock(relative);
+            appendBlock(relative, 'list');
             continue;
           }
           if (childTag === 'p' && !child.hasAttribute('style') && !child.hasAttribute('align')) {
@@ -2378,8 +2382,12 @@ function htmlBlock(node, warnings, depth = 0, options = {}) {
               .join('')
               .trim();
             if (value) {
-              if (!hasBlockContent && !inlineBody) inlineBody = value;
-              else appendBlock(value);
+              if (!hasBlockContent && !inlineBody) {
+                inlineBody = value;
+                inlineBodyType = 'paragraph';
+              } else {
+                appendBlock(value, 'paragraph');
+              }
             }
             continue;
           }
@@ -2393,26 +2401,51 @@ function htmlBlock(node, warnings, depth = 0, options = {}) {
             ...options,
             escapeBlockSyntax: true
           });
-          appendBlock(value);
+          appendBlock(value, childTag === 'p' ? 'paragraph' : 'block');
         }
         flushInlineNodes();
         const itemContent = task + inlineBody;
         const prefix = `${itemIndent}${marker}${itemContent ? ` ${itemContent}` : ''}`;
-        const continuationBlocks = bodyBlocks.map(block => block.split('\n')
-          .map(line => `${continuationIndent}${line}`)
-          .join('\n'));
-        let continuation = continuationBlocks.join('\n');
-        let inlineBlockSeparator = '\n';
-        if (looseList && !looseSpacingApplied) {
-          if (inlineBody && continuationBlocks.length) {
-            inlineBlockSeparator = '\n\n';
-            looseSpacingApplied = true;
-          } else if (continuationBlocks.length > 1) {
-            continuation = continuationBlocks[0] + '\n\n' +
-              continuationBlocks.slice(1).join('\n');
-            looseSpacingApplied = true;
+        const continuationBlocks = bodyBlocks.map(block => ({
+          ...block,
+          value: block.value.split('\n')
+            .map(line => `${continuationIndent}${line}`)
+            .join('\n')
+        }));
+        let looseSpacingAppliedInItem = false;
+        const blockSeparator = (previousType, nextType) => {
+          if (previousType === 'paragraph' && nextType === 'list') {
+            const shouldSeparate = looseList && listItems.length === 1 &&
+              !looseSpacingAppliedInItem;
+            if (shouldSeparate) looseSpacingAppliedInItem = true;
+            return shouldSeparate ? '\n\n' : '\n';
           }
+          if (previousType === 'paragraph' && nextType === 'paragraph') {
+            looseSpacingAppliedInItem = true;
+            return '\n\n';
+          }
+          if (previousType === 'list' && nextType === 'paragraph') {
+            looseSpacingAppliedInItem = true;
+            return '\n\n';
+          }
+          if (previousType === 'block' || nextType === 'block' ||
+              (previousType === 'list' && nextType === 'list')) {
+            looseSpacingAppliedInItem = true;
+            return '\n\n';
+          }
+          return '\n';
+        };
+        let continuation = '';
+        for (let index = 0; index < continuationBlocks.length; index += 1) {
+          const block = continuationBlocks[index];
+          if (index > 0) {
+            continuation += blockSeparator(continuationBlocks[index - 1].type, block.type);
+          }
+          continuation += block.value;
         }
+        const inlineBlockSeparator = inlineBody && continuationBlocks.length
+          ? blockSeparator(inlineBodyType, continuationBlocks[0].type)
+          : '\n';
         const output = prefix +
           (continuation ? inlineBlockSeparator + continuation : '');
         nextOrdinal = itemOrdinal + 1;
