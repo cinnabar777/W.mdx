@@ -58,6 +58,10 @@ jobs:
         working-directory: web
         run: npm run test:browser:table-syntax-scroll
 
+      - name: Run source table, quote, list, and callout interaction regressions
+        working-directory: web
+        run: npm run test:browser:interactions
+
       - name: Make Gradle Wrapper Executable
         run: chmod +x gradlew
 
