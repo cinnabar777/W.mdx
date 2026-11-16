@@ -720,7 +720,11 @@ test('keyboard shortcuts are one flat alphabetical list with no section headings
   assert.doesNotMatch(hotkeysXml, /ResetPreferenceCategory/);
   const titles = [...hotkeysXml.matchAll(/app:title="([^"]+)"/g)]
     .map(([, title]) => title.replace(/&amp;/g, '&'));
-  assert.equal(titles.length, 72, 'All shortcut preferences remain present');
+  assert.equal(titles.length, 76, 'All shortcut preferences remain present');
+  assert.ok(titles.includes('Rendered Syntax: Hide'));
+  assert.ok(titles.includes('Rendered Syntax: Caret'));
+  assert.ok(titles.includes('Rendered Syntax: Current Line'));
+  assert.ok(titles.includes('Rendered Syntax: Current Block'));
   assert.deepEqual(
     titles,
     [...titles].sort((first, second) =>
