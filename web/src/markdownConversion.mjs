@@ -2282,10 +2282,10 @@ function htmlBlock(node, warnings, depth = 0, options = {}) {
       : reversed
         ? node.querySelectorAll(':scope > li').length
         : 1;
-    if (nextOrdinal < 1) {
+    if (nextOrdinal < 0) {
       addWarning(
         warnings,
-        'HTML ordered-list start values below 1 cannot be represented in Wmdx and were normalized.'
+        'Negative HTML ordered-list start values cannot be represented in Wmdx and were normalized.'
       );
       nextOrdinal = 1;
     }
@@ -2314,7 +2314,9 @@ function htmlBlock(node, warnings, depth = 0, options = {}) {
         const checkbox = item.querySelector(
           ':scope > input[type="checkbox"], :scope > p > input[type="checkbox"]'
         );
-        const orderedMarker = getOrderedMarkerLabel(orderedStyle, itemOrdinal);
+        const orderedMarker = itemOrdinal === 0 && orderedStyle === 'decimal'
+          ? '0.'
+          : getOrderedMarkerLabel(orderedStyle, itemOrdinal);
         const orderedDelimiter = options.orderedListDelimiter === ')' ? ')' : '.';
         const marker = ordered
           ? orderedMarker.replace(/[.)]$/, orderedDelimiter)
@@ -2733,6 +2735,7 @@ function importCommonMarkReferenceHtml(body, Parser, warnings, footnoteDefinitio
   const orderedListDelimiters = new WeakMap();
   const blockOptions = { unorderedListMarkerState, preserveCodeBlockText: true };
   const leadingNbspMarkers = new Map();
+  const leadingTabMarkers = new Map();
   const inlineCodeMarkers = new Map();
   let softBreakMarker = String.fromCharCode(0xE002) + 'WMDX_SOFT_BREAK' + String.fromCharCode(0xE003);
   while (body.textContent?.includes(softBreakMarker)) softBreakMarker += String.fromCharCode(0xE105);
@@ -2740,8 +2743,31 @@ function importCommonMarkReferenceHtml(body, Parser, warnings, footnoteDefinitio
   const blockStartTags = new Set([
     'blockquote', 'body', 'div', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'li', 'p', 'td', 'th'
   ]);
+  const structuralBlockTags = new Set([
+    'blockquote', 'body', 'dd', 'details', 'div', 'dl', 'dt', 'fieldset',
+    'figcaption', 'figure', 'footer', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
+    'header', 'hr', 'li', 'main', 'nav', 'ol', 'p', 'pre', 'section',
+    'table', 'tbody', 'td', 'tfoot', 'th', 'thead', 'tr', 'ul'
+  ]);
+  const hasAdjacentStructuralBlock = (textNode, direction) => {
+    let current = textNode;
+    while (current && current !== body) {
+      let sibling = direction === 'previous' ? current.previousSibling : current.nextSibling;
+      while (sibling && (sibling.nodeType === 8 ||
+          (sibling.nodeType === 3 && !sibling.nodeValue.trim()))) {
+        sibling = direction === 'previous' ? sibling.previousSibling : sibling.nextSibling;
+      }
+      if (sibling) {
+        return sibling.nodeType === 1 &&
+          structuralBlockTags.has(sibling.tagName.toLowerCase());
+      }
+      current = current.parentNode;
+    }
+    return false;
+  };
   const isBlockStartTextNode = textNode => {
-    if (!textNode.nodeValue?.startsWith(leadingNbspCharacter)) return false;
+    if (!textNode.nodeValue?.startsWith(leadingNbspCharacter) &&
+        !textNode.nodeValue?.startsWith('\t')) return false;
     let current = textNode;
     let parent = current.parentNode;
     while (parent && parent !== body.ownerDocument) {
@@ -2760,9 +2786,24 @@ function importCommonMarkReferenceHtml(body, Parser, warnings, footnoteDefinitio
     }
     return false;
   };
+  const literalBacktickMarkers = new Map();
+  let literalBacktickIndex = 0;
+  const protectAdjacentLiteralBackticks = textNode => {
+    if (textNode?.nodeType !== 3 || !textNode.nodeValue?.includes('`')) return;
+    textNode.nodeValue = textNode.nodeValue.replace(/`/g, () => {
+      let marker = String.fromCharCode(0xE106) +
+        'WMDX_LITERAL_BACKTICK_' + (++literalBacktickIndex) +
+        String.fromCharCode(0xE107);
+      while (body.textContent?.includes(marker)) marker += String.fromCharCode(0xE108);
+      literalBacktickMarkers.set(marker, String.fromCharCode(92) + '`');
+      return marker;
+    });
+  };
   let inlineCodeIndex = 0;
   for (const code of Array.from(body.querySelectorAll('code'))) {
     if (code.closest('pre')) continue;
+    protectAdjacentLiteralBackticks(code.previousSibling);
+    protectAdjacentLiteralBackticks(code.nextSibling);
     let marker = String.fromCharCode(0xE102) + 'WMDX_INLINE_CODE_' + (++inlineCodeIndex) + String.fromCharCode(0xE103);
     while (body.textContent?.includes(marker)) marker += String.fromCharCode(0xE104);
     inlineCodeMarkers.set(marker, formatMarkdownCodeSpan(code.textContent ?? ''));
@@ -2790,13 +2831,30 @@ function importCommonMarkReferenceHtml(body, Parser, warnings, footnoteDefinitio
   while (textNode) {
     if (!textNode.parentElement?.closest('pre, code')) {
       if (isBlockStartTextNode(textNode)) {
+        const leadingTabs = /^\t+/.exec(textNode.nodeValue)?.[0] ?? '';
+        if (leadingTabs) {
+          const tabMarker = String.fromCharCode(0xE109) +
+            'WMDX_LEADING_TAB_' + (++markerIndex) + String.fromCharCode(0xE10A);
+          leadingTabMarkers.set(tabMarker, '&#9;'.repeat(leadingTabs.length));
+          textNode.nodeValue = tabMarker + textNode.nodeValue.slice(leadingTabs.length);
+        }
         const leading = new RegExp('^' + leadingNbspCharacter + '+').exec(textNode.nodeValue)?.[0] ?? '';
-        const marker = String.fromCharCode(0xE100) + 'WMDX_NBSP_' + (++markerIndex) + String.fromCharCode(0xE101);
-        leadingNbspMarkers.set(marker, '&nbsp;'.repeat(leading.length));
-        textNode.nodeValue = marker + textNode.nodeValue.slice(leading.length);
+        if (leading) {
+          const marker = String.fromCharCode(0xE100) + 'WMDX_NBSP_' + (++markerIndex) + String.fromCharCode(0xE101);
+          leadingNbspMarkers.set(marker, '&nbsp;'.repeat(leading.length));
+          textNode.nodeValue = marker + textNode.nodeValue.slice(leading.length);
+        }
       }
       if (/\S/.test(textNode.nodeValue)) {
-        textNode.nodeValue = textNode.nodeValue.replace(/\r?\n/g, softBreakMarker);
+        let value = textNode.nodeValue;
+        if (hasAdjacentStructuralBlock(textNode, 'previous')) {
+          value = value.replace(/^[ \t]*(?:\r?\n)+[ \t]*/, '');
+        }
+        if (hasAdjacentStructuralBlock(textNode, 'next')) {
+          value = value.replace(/[ \t]*(?:\r?\n)+[ \t]*$/, '');
+        }
+        value = value.replace(/[ \t]*\r?\n(?:[ \t]*\r?\n)+[ \t]*/g, ' ');
+        textNode.nodeValue = value.replace(/\r?\n/g, softBreakMarker);
       }
     }
     textNode = textWalker.nextNode();
@@ -2864,7 +2922,16 @@ function importCommonMarkReferenceHtml(body, Parser, warnings, footnoteDefinitio
   };
   converter.addRule('commonMarkEmphasis', {
     filter: ['em', 'i'],
-    replacement: (content, node) => '*' + safeEmphasisContent(content, node) + '*'
+    replacement: (content, node) => {
+      let nestingDepth = 0;
+      let ancestor = node.parentElement;
+      while (ancestor && ancestor !== body) {
+        if (['EM', 'I'].includes(ancestor.nodeName)) nestingDepth += 1;
+        ancestor = ancestor.parentElement;
+      }
+      const delimiter = nestingDepth % 2 === 0 ? '*' : '_';
+      return delimiter + safeEmphasisContent(content, node) + delimiter;
+    }
   });
   converter.addRule('commonMarkStrong', {
     filter: ['strong', 'b'],
@@ -2874,24 +2941,27 @@ function importCommonMarkReferenceHtml(body, Parser, warnings, footnoteDefinitio
     filter: node => node.nodeName === 'A',
     replacement: (content, node) => {
       if (!node.hasAttribute('href')) return content;
-      let safeLabel = '';
-      let backslashRun = 0;
-      const backslash = String.fromCharCode(92);
-      for (const character of content) {
-        if (character === '[' || character === ']') {
-          if (backslashRun % 2 === 0) safeLabel += backslash;
+      let safeLabel = content;
+      if (!node.querySelector('img')) {
+        safeLabel = '';
+        let backslashRun = 0;
+        const backslash = String.fromCharCode(92);
+        for (const character of content) {
+          if (character === '[' || character === ']') {
+            if (backslashRun % 2 === 0) safeLabel += backslash;
+            safeLabel += character;
+            backslashRun = 0;
+            continue;
+          }
           safeLabel += character;
-          backslashRun = 0;
-          continue;
+          backslashRun = character === backslash ? backslashRun + 1 : 0;
         }
-        safeLabel += character;
-        backslashRun = character === backslash ? backslashRun + 1 : 0;
       }
       const href = node.getAttribute('href') ?? '';
       const title = node.hasAttribute('title')
         ? ' ' + String.fromCharCode(34) + escapeMarkdownField(node.getAttribute('title'), { escapeCharacters: String.fromCharCode(34) }) + String.fromCharCode(34)
         : '';
-      return '[' + (safeLabel || markdownText(href)) + '](' + markdownLinkDestination(href) + title + ')';
+      return '[' + safeLabel + '](' + markdownLinkDestination(href) + title + ')';
     }
   });
   let literalBangMarker = String.fromCharCode(0xE000) + 'WMDX_LITERAL_BANG' + String.fromCharCode(0xE001);
@@ -2908,6 +2978,7 @@ function importCommonMarkReferenceHtml(body, Parser, warnings, footnoteDefinitio
     replacement: (content, node) => {
       const level = Number(node.nodeName[1]);
       const normalizedContent = content.replace(/\s+/g, ' ').trim();
+      if (!normalizedContent) return '\n\n<h' + level + '></h' + level + '>\n\n';
       const safeContent = normalizedContent.replace(/(^|\s)(#{1,6})[ \t]*$/g, (_, prefix, hashes) => prefix + String.fromCharCode(92) + hashes);
       return '\n\n' + '#'.repeat(level) + ' ' + safeContent + '\n\n';
     }
@@ -2929,7 +3000,12 @@ function importCommonMarkReferenceHtml(body, Parser, warnings, footnoteDefinitio
   });
   converter.addRule('commonMarkBlockquote', {
     filter: 'blockquote',
-    replacement: (_, node) => '\n\n' + htmlBlock(node, warnings, 0, blockOptions) + '\n\n'
+    replacement: (_, node) => {
+      const markdown = htmlBlock(node, warnings, 0, blockOptions);
+      return markdown.trim()
+        ? '\n\n' + markdown + '\n\n'
+        : '\n\n<blockquote></blockquote>\n\n';
+    }
   });
   converter.addRule('commonMarkList', {
     filter: ['ul', 'ol'],
@@ -2941,10 +3017,16 @@ function importCommonMarkReferenceHtml(body, Parser, warnings, footnoteDefinitio
           (previous.nodeType === 3 && !previous.nodeValue.trim()))) {
           previous = previous.previousSibling;
         }
-        const currentStart = Number(node.getAttribute('start')) || 1;
+        const currentStart = node.hasAttribute('start') &&
+          Number.isFinite(Number(node.getAttribute('start')))
+          ? Number(node.getAttribute('start'))
+          : 1;
         const currentCount = Array.from(node.children).filter(child => child.nodeName === 'LI').length;
         if (previous?.nodeType === 1 && previous.nodeName === 'OL') {
-          const previousStart = Number(previous.getAttribute('start')) || 1;
+          const previousStart = previous.hasAttribute('start') &&
+            Number.isFinite(Number(previous.getAttribute('start')))
+            ? Number(previous.getAttribute('start'))
+            : 1;
           const previousCount = Array.from(previous.children).filter(child => child.nodeName === 'LI').length;
           const state = orderedListDelimiters.get(node.parentNode);
           if (state?.node === previous && currentStart === previousStart + previousCount) {
@@ -2966,6 +3048,12 @@ function importCommonMarkReferenceHtml(body, Parser, warnings, footnoteDefinitio
   });
   let markdownSource = converter.turndown(body);
   markdownSource = markdownSource.split(literalBangMarker).join('\\!');
+  for (const [marker, replacement] of literalBacktickMarkers) {
+    markdownSource = markdownSource.split(marker).join(replacement);
+  }
+  for (const [marker, replacement] of leadingTabMarkers) {
+    markdownSource = markdownSource.split(marker).join(replacement);
+  }
   for (const [marker, replacement] of inlineCodeMarkers) {
     markdownSource = markdownSource.split(marker).join(replacement);
   }
