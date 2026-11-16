@@ -2303,6 +2303,7 @@ function htmlBlock(node, warnings, depth = 0, options = {}) {
     const looseList = listItems.some(item =>
       Array.from(item.children).some(child => child.tagName.toLowerCase() === 'p')
     );
+    let looseSpacingApplied = looseList && listItems.length > 1;
     return listItems
       .map(item => {
         let itemOrdinal = nextOrdinal;
@@ -2357,9 +2358,14 @@ function htmlBlock(node, warnings, depth = 0, options = {}) {
             const value = htmlBlock(child, warnings, depth + 1, {
               ...options,
               escapeBlockSyntax: true,
-              listIndent: 0
+              listIndent: continuationIndent.length
             });
-            appendBlock(value);
+            const relative = value.split('\n')
+              .map(line => line.startsWith(continuationIndent)
+                ? line.slice(continuationIndent.length)
+                : line)
+              .join('\n');
+            appendBlock(relative);
             continue;
           }
           if (childTag === 'p' && !child.hasAttribute('style') && !child.hasAttribute('align')) {
@@ -2392,13 +2398,21 @@ function htmlBlock(node, warnings, depth = 0, options = {}) {
         flushInlineNodes();
         const itemContent = task + inlineBody;
         const prefix = `${itemIndent}${marker}${itemContent ? ` ${itemContent}` : ''}`;
-        const bodySeparator = looseList ? '\n\n' : '\n';
-        const continuation = bodyBlocks
-          .map(block => block.split('\n')
-            .map(line => `${continuationIndent}${line}`)
-            .join('\n'))
-          .join(bodySeparator);
-        const inlineBlockSeparator = inlineBody && looseList ? '\n\n' : '\n';
+        const continuationBlocks = bodyBlocks.map(block => block.split('\n')
+          .map(line => `${continuationIndent}${line}`)
+          .join('\n'));
+        let continuation = continuationBlocks.join('\n');
+        let inlineBlockSeparator = '\n';
+        if (looseList && !looseSpacingApplied) {
+          if (inlineBody && continuationBlocks.length) {
+            inlineBlockSeparator = '\n\n';
+            looseSpacingApplied = true;
+          } else if (continuationBlocks.length > 1) {
+            continuation = continuationBlocks[0] + '\n\n' +
+              continuationBlocks.slice(1).join('\n');
+            looseSpacingApplied = true;
+          }
+        }
         const output = prefix +
           (continuation ? inlineBlockSeparator + continuation : '');
         nextOrdinal = itemOrdinal + 1;
@@ -2894,9 +2908,9 @@ function importCommonMarkReferenceHtml(body, Parser, warnings, footnoteDefinitio
     blankReplacement: (_, node) => {
       if (node.nodeType !== 1) return '\n\n';
       const tag = node.tagName.toLowerCase();
-      if ((tag === 'blockquote' || /^h[1-6]$/.test(tag)) &&
-          !node.textContent.trim() && !node.querySelector('*')) {
-        return '\n\n<' + tag + '></' + tag + '>\n\n';
+      if (!node.textContent.trim() && !node.querySelector('*')) {
+        if (tag === 'blockquote') return '\n\n>\n\n';
+        if (/^h[1-6]$/.test(tag)) return '\n\n' + '#'.repeat(Number(tag[1])) + ' \n\n';
       }
       const preserveBlankNode = tag === 'pre' ||
         tag === 'ul' || tag === 'ol' ||
@@ -3007,7 +3021,7 @@ function importCommonMarkReferenceHtml(body, Parser, warnings, footnoteDefinitio
     replacement: (content, node) => {
       const level = Number(node.nodeName[1]);
       const normalizedContent = content.replace(/\s+/g, ' ').trim();
-      if (!normalizedContent) return '\n\n<h' + level + '></h' + level + '>\n\n';
+      if (!normalizedContent) return '\n\n' + '#'.repeat(level) + ' \n\n';
       const safeContent = normalizedContent.replace(/(^|\s)(#{1,6})[ \t]*$/g, (_, prefix, hashes) => prefix + String.fromCharCode(92) + hashes);
       return '\n\n' + '#'.repeat(level) + ' ' + safeContent + '\n\n';
     }
@@ -3033,7 +3047,7 @@ function importCommonMarkReferenceHtml(body, Parser, warnings, footnoteDefinitio
       const markdown = htmlBlock(node, warnings, 0, blockOptions);
       return markdown.trim()
         ? '\n\n' + markdown + '\n\n'
-        : '\n\n<blockquote></blockquote>\n\n';
+        : '\n\n>\n\n';
     }
   });
   converter.addRule('commonMarkList', {
