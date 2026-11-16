@@ -2311,6 +2311,13 @@
       box-sizing: border-box !important;
     }
 
+    /* The rendered header owns its leading icon; do not apply a measured
+       quote/list-marker gutter, which shifts the complete header on caret entry. */
+    .cm-content .cm-line.cm-callout.cm-callout-title-rendered:not(.cm-list-item) {
+      padding-left: var(--callout-padding, 12px) !important;
+      text-indent: 0 !important;
+    }
+
     .cm-content .cm-line.cm-callout-title:not(:has(+ .cm-line.cm-callout-body)) {
       border-radius: 8px !important;
     }
