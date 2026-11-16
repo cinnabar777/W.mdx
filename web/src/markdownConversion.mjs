@@ -1122,6 +1122,12 @@ function protectTopLevelMarkdownHtmlBlocks(source, format, Parser, warnings) {
     }
     const from = source.indexOf(raw, cursor);
     if (from < 0) continue;
+    const before = source.slice(0, from);
+    const after = source.slice(from + raw.length);
+    const touchesMarkdownContent = Boolean(
+      (before.trim() && !/\n[ \t]*\n[ \t]*$/.test(before)) ||
+      (after.trim() && !/^[ \t]*\n[ \t]*\n/.test(after))
+    );
     chunks.push(source.slice(cursor, from));
     let replacement = raw;
     if (token.type === 'html' && token.block === true) {
@@ -1150,7 +1156,18 @@ function protectTopLevelMarkdownHtmlBlocks(source, format, Parser, warnings) {
         !hasActiveElement &&
         containsMarkdownInlineSyntax(document.body?.textContent)
       );
-      if (standaloneHeaderlessTable || containsMarkdownTextSyntax) {
+      const containsMarkdownBlockSyntax =
+        /^[ \t]{0,3}(?:`{3,}|~{3,})/m.test(raw);
+      const isCommentOrDeclaration =
+        /^\s*(?:<!--|<!\[CDATA\[|<\?)/i.test(raw);
+      const preserveForContext =
+        touchesMarkdownContent && !hasActiveElement && !isCommentOrDeclaration;
+      if (
+        standaloneHeaderlessTable ||
+        containsMarkdownTextSyntax ||
+        containsMarkdownBlockSyntax ||
+        preserveForContext
+      ) {
         let marker;
         do {
           marker = `\uE020MDXHTMLBLOCK${markerIndex++}\uE021`;
