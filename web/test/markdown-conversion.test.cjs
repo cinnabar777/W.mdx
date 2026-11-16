@@ -601,14 +601,40 @@ test('An unmatched math fence does not shield later Markdown from export', async
   assert.match(result.markdown, /```math\nx\^{n} \+ y\^{m}\n```/);
 });
 
-test('Obsidian inline footnotes warn when exported to a dialect without footnotes', async () => {
+test('Obsidian inline footnotes map to GFM and warn for CommonMark', async () => {
   const { exportMarkdown } = await import('../src/markdownConversion.mjs');
-  const source = 'A note^[inline detail] remains attached to its sentence.';
+  const { parseFootnotes } = await import('../src/footnotes.js');
+  const source = [
+    'A note^[inline detail] remains attached to its sentence.',
+    '`^[code only]` and \\^[escaped].',
+    '',
+    'This one collides: [^wmdx-inline-1].'
+  ].join('\n');
   const commonmark = exportMarkdown(source, 'commonmark');
+  const gfm = exportMarkdown(source, 'gfm');
   const obsidian = exportMarkdown(source, 'obsidian');
 
   assert.equal(commonmark.markdown, source);
-  assert.ok(commonmark.warnings.some(warning => warning.includes('inline footnotes')));
+  assert.ok(commonmark.warnings.some(warning => warning.includes('CommonMark has no footnote syntax')));
+  assert.equal(
+    gfm.markdown,
+    'A note[^wmdx-inline-2] remains attached to its sentence.\n' +
+      '`^[code only]` and \\^[escaped].\n\n' +
+      'This one collides: [^wmdx-inline-1].\n\n' +
+      '[^wmdx-inline-2]: inline detail'
+  );
+  assert.deepEqual(gfm.warnings, []);
+  const parsed = parseFootnotes(gfm.markdown);
+  assert.equal(parsed.references.find(reference => reference.label === 'wmdx-inline-2')?.label,
+    'wmdx-inline-2');
+  assert.equal(
+    parsed.definitions.find(definition => definition.label === 'wmdx-inline-2')?.body,
+    'inline detail'
+  );
+  assert.deepEqual(
+    exportMarkdown('`^[code only]` and \\^[escaped].', 'commonmark').warnings,
+    []
+  );
   assert.deepEqual(obsidian.warnings, []);
 });
 

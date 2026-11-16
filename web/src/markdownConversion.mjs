@@ -2897,7 +2897,13 @@ function removeRedundantMarkdownUnderscoreEscapes(source) {
   return text;
 }
 
-function convertWmdxInlineToMarkdown(line, dialect, warnings) {
+function convertWmdxInlineToMarkdown(
+  line,
+  dialect,
+  warnings,
+  generatedFootnotes = [],
+  usedFootnoteLabels = new Set()
+) {
   let output = '';
   let plainStart = 0;
   let index = 0;
@@ -2909,6 +2915,46 @@ function convertWmdxInlineToMarkdown(line, dialect, warnings) {
       return marker;
     };
     let text = String(plainText ?? '');
+    if (dialect === 'gfm') {
+      let output = '';
+      for (let index = 0; index < text.length;) {
+        if (
+          text[index] !== '^' ||
+          text[index + 1] !== '[' ||
+          (index > 0 && text[index - 1] === '\\')
+        ) {
+          output += text[index++];
+          continue;
+        }
+        let depth = 1;
+        let close = index + 2;
+        for (; close < text.length; close++) {
+          if (text[close] === '\\') {
+            close++;
+          } else if (text[close] === '[') {
+            depth++;
+          } else if (text[close] === ']' && --depth === 0) {
+            break;
+          }
+        }
+        const body = text.slice(index + 2, close);
+        if (depth !== 0 || !body.trim()) {
+          output += text[index++];
+          continue;
+        }
+        let number = generatedFootnotes.length + 1;
+        let label = `wmdx-inline-${number}`;
+        while (usedFootnoteLabels.has(label.toLowerCase())) {
+          number++;
+          label = `wmdx-inline-${number}`;
+        }
+        usedFootnoteLabels.add(label.toLowerCase());
+        generatedFootnotes.push({ label, body });
+        output += `[^${label}]`;
+        index = close + 1;
+      }
+      text = output;
+    }
     if (dialect !== 'obsidian') {
       text = text.replace(/(?<!\\)!\[\[([^\]\n]+)\]\]/g, (_, target) => {
         addWarning(
@@ -2917,6 +2963,12 @@ function convertWmdxInlineToMarkdown(line, dialect, warnings) {
         );
         return `\\!\\[\\[${target}\\]\\]`;
       });
+    }
+    if (dialect === 'commonmark' && /(?<!\\)\^\[[^\]\n]+\]/.test(text)) {
+      addWarning(
+        warnings,
+        'CommonMark has no footnote syntax; Obsidian inline footnotes were preserved as text.'
+      );
     }
     text = protectInlineMathSyntax(text, protect);
     text = protectBareAutolinks(text, protect);
@@ -3305,14 +3357,6 @@ export function exportMarkdown(source, dialect = 'commonmark') {
         'CommonMark has no footnote syntax; footnote source was preserved but may render as ordinary text.'
       );
     }
-    if (dialect !== 'obsidian' && originalLines.some((line, index) =>
-      !protectedLines.has(index) && /(?<!\\)\^\[[^\]\n]+\]/.test(line)
-    )) {
-      addWarning(
-        warnings,
-        'Obsidian inline footnotes were preserved as text because this target dialect has no equivalent.'
-      );
-    }
     let lines = [...originalLines];
     if (dialect === 'obsidian') {
       lines = protectObsidianCommonMarkReferenceCollisions(
@@ -3325,10 +3369,27 @@ export function exportMarkdown(source, dialect = 'commonmark') {
     lines = convertWmdxCallouts(lines, dialect, warnings, protectedLines);
     lines = mapWmdxOrderedLists(lines, protectedLines, warnings);
     lines = mapWmdxTaskItems(lines, protectedLines, dialect, warnings);
+    const generatedFootnotes = [];
+    const usedFootnoteLabels = new Set(
+      [...String(source ?? '').matchAll(/\[\^([^\]\s]+)\]/g)]
+        .map(match => match[1].toLowerCase())
+    );
     let output = lines.map((line, index) => protectedLines.has(index)
       ? line
-      : convertWmdxInlineToMarkdown(line, dialect, warnings));
+      : convertWmdxInlineToMarkdown(
+        line,
+        dialect,
+        warnings,
+        generatedFootnotes,
+        usedFootnoteLabels
+      ));
     output = mapWmdxParagraphAlignments(output, protectedLines, dialect);
+    if (dialect === 'gfm' && generatedFootnotes.length) {
+      output.push(
+        '',
+        ...generatedFootnotes.map(({ label, body }) => `[^${label}]: ${body}`)
+      );
+    }
     if (dialect === 'commonmark') {
       output = addCommonMarkHeadingAnchors(output, protectedLines);
       return convertGfmTablesToCommonMarkHtml(output.join('\n')).split('\n');
