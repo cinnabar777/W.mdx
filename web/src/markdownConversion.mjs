@@ -1105,7 +1105,7 @@ function convertInlineHtmlToMarkdown(line, warnings, Parser, options = {}) {
         if (isEscapedMarkdownDelimiter(wholeText, offset)) return source;
         const media = new Parser().parseFromString(source, 'text/html')
           .querySelector(tag.toLowerCase());
-        return media ? htmlBlock(media, warnings, 0, { preserveUnsupportedHtmlAsRaw }) : source;
+        return media ? htmlBlock(media, warnings, 0, { preserveUnsupportedHtmlAsRaw: options.preserveUnsupportedHtmlAsRaw === true }) : source;
       }
     );
     text = text.replace(/<a\b[^>]*>[\s\S]*?<\/a\s*>/gi, (source, offset, wholeText) => {
@@ -1113,7 +1113,7 @@ function convertInlineHtmlToMarkdown(line, warnings, Parser, options = {}) {
       const anchor = new Parser().parseFromString(source, 'text/html').querySelector('a');
       if (
         anchor &&
-        shouldPreserveRawHtmlLink(anchor, { preserveUnsupportedHtmlAsRaw })
+        shouldPreserveRawHtmlLink(anchor, { preserveUnsupportedHtmlAsRaw: options.preserveUnsupportedHtmlAsRaw === true })
       ) return protect(source);
       if (
         anchor &&
@@ -1126,7 +1126,7 @@ function convertInlineHtmlToMarkdown(line, warnings, Parser, options = {}) {
         );
         return protect(source);
       }
-      return anchor ? inlineHtmlNode(anchor, warnings, { preserveUnsupportedHtmlAsRaw }) : source;
+      return anchor ? inlineHtmlNode(anchor, warnings, { preserveUnsupportedHtmlAsRaw: options.preserveUnsupportedHtmlAsRaw === true }) : source;
     });
   }
   text = text
