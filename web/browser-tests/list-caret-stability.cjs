@@ -228,6 +228,7 @@ async function main() {
       documentText,
       { timeout: 10000 }
     );
+    await page.evaluate(() => window.editorBridge.setSelectionState({ anchor: 0, head: 0 }, 0));
     await page.waitForTimeout(80);
     await clickPhrase(page, 'Root bullet content');
     assert.equal(
