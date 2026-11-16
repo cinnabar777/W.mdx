@@ -2110,44 +2110,14 @@ function htmlMediaResource(node) {
   return `[${markdownText(title)}](${markdownLinkDestination(source)} "wmdx-${tag}")`;
 }
 
-function shouldPreserveRawHtmlElement(node, options = {}) {
-  if (!options.preserveRawHtmlContainers || node.nodeType !== 1) return false;
-  const tag = node.tagName.toLowerCase();
-  if (['div', 'section', 'table', 'del'].includes(tag)) return true;
-  if (!commonMarkReferenceHtmlElements.has(tag)) return true;
-  const allowedAttributes = commonMarkReferenceHtmlAttributes[tag] ?? new Set();
-  return Array.from(node.attributes).some(attribute =>
-    !allowedAttributes.has(attribute.name.toLowerCase())
-  );
-}
-
-function shouldPreserveRawHtmlLink(node, options = {}) {
-  if (!options.preserveRawHtmlContainers) return false;
-  const href = node.getAttribute('href') ?? '';
-  const label = node.textContent ?? '';
-  return !label.trim() || /[\s\\`<>()*]|[^\x00-\x7f]/.test(href) || /[*_~`]/.test(label);
-}
-
 function inlineHtmlNode(node, warnings, options = {}) {
   if (node.nodeType === 3) return markdownText(node.nodeValue, options);
   if (node.nodeType === 8) {
-    if (options.preserveRawHtmlContainers) {
-      const safeComment = String(node.nodeValue ?? '').replace(/--+/g, '- -');
-      return `<!--${safeComment}-->`;
-    }
     addWarning(warnings, 'HTML comments have no native Wmdx equivalent and were omitted.');
     return '';
   }
   if (node.nodeType !== 1) return '';
   const tag = node.tagName.toLowerCase();
-  if (['script', 'style', 'iframe', 'object', 'embed', 'form'].includes(tag)) {
-    addWarning(warnings, `Active HTML element <${tag}> was omitted.`);
-    return '';
-  }
-  if (shouldPreserveRawHtmlElement(node, options) ||
-      (tag === 'a' && shouldPreserveRawHtmlLink(node, options))) {
-    return serializeSafeHtmlBlock(node, warnings);
-  }
   if (tag === 'audio' || tag === 'video') return htmlMediaResource(node);
   if (node.hasAttribute('style') && !isGeneratedTocNode(node)) {
     addWarning(warnings, 'Unmapped inline CSS styling was ignored during HTML import.');
@@ -2250,22 +2220,11 @@ function serializeSafeHtmlBlock(node, warnings) {
 function htmlBlock(node, warnings, depth = 0, options = {}) {
   if (node.nodeType === 3) return markdownText(node.nodeValue, options);
   if (node.nodeType === 8) {
-    if (options.preserveRawHtmlContainers) {
-      const safeComment = String(node.nodeValue ?? '').replace(/--+/g, '- -');
-      return `<!--${safeComment}-->`;
-    }
     addWarning(warnings, 'HTML comments have no native Wmdx equivalent and were omitted.');
     return '';
   }
   if (node.nodeType !== 1) return '';
   const tag = node.tagName.toLowerCase();
-  if (['script', 'style', 'iframe', 'object', 'embed', 'form'].includes(tag)) {
-    addWarning(warnings, `Active HTML element <${tag}> was omitted.`);
-    return '';
-  }
-  if (shouldPreserveRawHtmlElement(node, options)) {
-    return serializeSafeHtmlBlock(node, warnings);
-  }
   if (node.hasAttribute('style') && !isGeneratedTocNode(node)) {
     const style = node.getAttribute('style') ?? '';
     const textJustifyValue =
@@ -2324,7 +2283,6 @@ function htmlBlock(node, warnings, depth = 0, options = {}) {
   }
   if (tag === 'p') {
     const content = inline(options).trim();
-    if (!content && options.preserveRawHtmlContainers) return '<p></p>';
     if (/^<img\b[\s\S]*\btitle="[^"]*"[\s\S]*>$/.test(content)) {
       return `<p>${content}</p>`;
     }
@@ -2550,6 +2508,22 @@ function htmlBlock(node, warnings, depth = 0, options = {}) {
   if (tag === 'table') {
     const rowNodes = Array.from(node.querySelectorAll('tr'))
       .filter(row => row.closest('table') === node);
+    const firstRowCells = Array.from(rowNodes[0]?.children ?? []).filter(cell =>
+      ['th', 'td'].includes(cell.tagName.toLowerCase())
+    );
+    const hasHeaderCells = firstRowCells.some(cell =>
+      cell.tagName.toLowerCase() === 'th'
+    );
+    const hasBlockCellContent = rowNodes.some(row =>
+      Array.from(row.children).some(cell =>
+        ['th', 'td'].includes(cell.tagName.toLowerCase()) &&
+        cell.querySelector('p, pre, blockquote, ul, ol, table, div, section, hr')
+      )
+    );
+    if (
+      options.preserveRawHtmlContainers &&
+      (!hasHeaderCells || hasBlockCellContent)
+    ) return serializeSafeHtmlBlock(node, warnings);
     if (!rowNodes.length) return '';
     const normalized = rowNodes.map(() => []);
     rowNodes.forEach((row, rowIndex) => {
@@ -2858,10 +2832,7 @@ function isCommonMarkReferenceHtml(body) {
   if (comments.nextNode()) return false;
   for (const node of body.querySelectorAll('*')) {
     const tag = node.tagName.toLowerCase();
-    if (!commonMarkReferenceHtmlElements.has(tag) || tag === 'del') return false;
-    if (tag === 'a' && shouldPreserveRawHtmlLink(node, { preserveRawHtmlContainers: true })) {
-      return false;
-    }
+    if (!commonMarkReferenceHtmlElements.has(tag)) return false;
     const allowedAttributes = commonMarkReferenceHtmlAttributes[tag] ?? new Set();
     for (const attribute of Array.from(node.attributes)) {
       const name = attribute.name.toLowerCase();
@@ -3300,7 +3271,7 @@ export function convertFromHtml(
   const hasHtmlComments = Boolean(commentWalker.nextNode());
   const footnotes = extractWmdxHtmlFootnotes(document, warnings);
   const body = document.body;
-  if (hasHtmlComments && !preserveRawHtmlContainers && !warnings.some(warning => warning.includes('HTML comments'))) {
+  if (hasHtmlComments && !warnings.some(warning => warning.includes('HTML comments'))) {
     addWarning(warnings, 'HTML comments have no native Wmdx equivalent and were omitted.');
   }
   const hasEmbeddedResources = embeddedResources && Object.keys(embeddedResources).length > 0;
