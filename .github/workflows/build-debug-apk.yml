@@ -36,6 +36,16 @@ jobs:
         run: |
           node web/build.cjs
 
+      - name: Run focused Markdown conversion and paste tests
+        working-directory: web
+        run: |
+          node --test \
+            test/markdown-conversion.test.cjs \
+            test/html-export.test.cjs \
+            test/markdown-compatibility-matrix.test.cjs \
+            test/gfm-spec-extensions.test.cjs \
+            test/markdown-paste.test.cjs
+
       - name: Install Playwright Chromium
         working-directory: web
         run: npx playwright install --with-deps chromium
