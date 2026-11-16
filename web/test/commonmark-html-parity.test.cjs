@@ -50,6 +50,7 @@ function canonicalizeRenderedHtml(html, template) {
   template.innerHTML = html;
   const serialize = (node, parentTag = '') => {
     if (node.nodeType === 3) {
+      if ((parentTag === '' || renderedBlockTags.has(parentTag)) && !node.nodeValue.trim()) return null;
       const text = parentTag === 'code' || parentTag === 'pre'
         ? node.nodeValue
         : node.nodeValue.replace(/\s+/g, ' ');
