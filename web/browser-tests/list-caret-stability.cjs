@@ -212,6 +212,11 @@ async function main() {
     await clickPhrase(page, 'Nested callout list content');
     await listRowStarts(page, 'Nested callout list content');
 
+    await page.locator('.cm-scroller').first().evaluate(scroller => {
+      scroller.scrollTop = 0;
+      scroller.dispatchEvent(new Event('scroll', { bubbles: true }));
+    });
+    await page.waitForTimeout(80);
     await clickPhrase(page, 'Root bullet content');
     const original = await page.evaluate(() => window.editorBridge.getMarkdown());
     await page.keyboard.type('X');
