@@ -228,13 +228,22 @@ async function main() {
       documentText,
       { timeout: 10000 }
     );
-    await page.evaluate(() => window.editorBridge.setSelectionState({ anchor: 0, head: 0 }, 0));
-    await page.waitForTimeout(80);
-    await clickPhrase(page, 'Root bullet content');
+    const sourceCursor = documentText.indexOf('Root bullet content') + 6;
+    await page.evaluate(position => {
+      window.editorBridge.setSelectionState({ anchor: position, head: position }, 0);
+    }, sourceCursor);
+    const sourceSelection = await page.evaluate(() =>
+      JSON.parse(window.editorBridge.getSelectionState())
+    );
+    assert.deepEqual(
+      sourceSelection,
+      { anchor: sourceCursor, head: sourceCursor },
+      'Source/Code view must accept caret movement into the list text'
+    );
     assert.equal(
       await page.evaluate(() => window.editorBridge.getMarkdown()),
       documentText,
-      'Moving the caret in Source/Code view must not alter Markdown'
+      'Moving the Source/Code caret must not alter Markdown'
     );
     console.log('Focused list caret/wrapping regression passed.');
   } finally {
