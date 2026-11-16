@@ -570,7 +570,7 @@ function annotateObsidianWikiLinks(document, markdown) {
  */
 export function renderMarkdownHtml(source, {
   profile = 'wmdx',
-  sourceDialect = 'wmdx',
+  sourceDialect = profile,
   window = globalThis.window,
   resolveAssetDataUri = null,
   footnoteSyntaxSettings = {}
@@ -584,12 +584,12 @@ export function renderMarkdownHtml(source, {
   const normalizedSourceDialect = ['wmdx', 'commonmark', 'gfm', 'obsidian'].includes(sourceDialect)
     ? sourceDialect
     : 'wmdx';
-  const sameNonWmdxDialect = normalizedSourceDialect === normalizedProfile &&
-    normalizedSourceDialect !== 'wmdx';
+  const sameCommonMarkDialect = normalizedSourceDialect === 'commonmark' &&
+    normalizedProfile === 'commonmark';
   const footnotes = normalizedSourceDialect === 'commonmark'
     ? { markdown: String(source ?? ''), references: [], rows: [] }
     : extractFootnotes(String(source ?? ''), footnoteSyntaxSettings);
-  const normalized = sameNonWmdxDialect
+  const normalized = sameCommonMarkDialect
     ? { markdown: footnotes.markdown, warnings: [] }
     : normalizeProfileSource(footnotes.markdown, normalizedSourceDialect);
   const footnoteBodyWarnings = [];
@@ -600,7 +600,7 @@ export function renderMarkdownHtml(source, {
     return { ...row, body: convertedBody.markdown };
   });
   const targetDialect = normalizedProfile === 'commonmark' ? 'commonmark' : 'gfm';
-  const exported = sameNonWmdxDialect
+  const exported = sameCommonMarkDialect
     ? { markdown: normalized.markdown, warnings: [] }
     : exportMarkdown(normalized.markdown, targetDialect);
   const markdownWarnings = [...normalized.warnings, ...exported.warnings]
