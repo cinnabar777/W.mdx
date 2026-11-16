@@ -2351,7 +2351,7 @@ function htmlBlock(node, warnings, depth = 0, options = {}) {
             inlineBody = value;
             inlineBodyType = 'inline';
           } else {
-            appendBlock(value, 'paragraph');
+            appendBlock(value, looseList ? 'paragraph' : 'inline');
           }
         };
         for (const child of Array.from(item.childNodes)) {
@@ -2401,7 +2401,8 @@ function htmlBlock(node, warnings, depth = 0, options = {}) {
             ...options,
             escapeBlockSyntax: true
           });
-          appendBlock(value, childTag === 'p' ? 'paragraph' : 'block');
+          const type = /^h[1-6]$/.test(childTag) ? 'heading' : 'block';
+          appendBlock(value, type);
         }
         flushInlineNodes();
         const itemContent = task + inlineBody;
@@ -2428,13 +2429,16 @@ function htmlBlock(node, warnings, depth = 0, options = {}) {
             looseSpacingAppliedInItem = true;
             return '\n\n';
           }
-          if (previousType === 'block' || nextType === 'block' ||
-              (previousType === 'list' && nextType === 'list')) {
+          if (previousType === 'paragraph' || nextType === 'paragraph') {
             looseSpacingAppliedInItem = true;
             return '\n\n';
           }
+          if (previousType === 'list' && nextType === 'list') return '\n\n';
           return '\n';
         };
+        const inlineBlockSeparator = inlineBody && continuationBlocks.length
+          ? blockSeparator(inlineBodyType, continuationBlocks[0].type)
+          : '\n';
         let continuation = '';
         for (let index = 0; index < continuationBlocks.length; index += 1) {
           const block = continuationBlocks[index];
@@ -2443,9 +2447,6 @@ function htmlBlock(node, warnings, depth = 0, options = {}) {
           }
           continuation += block.value;
         }
-        const inlineBlockSeparator = inlineBody && continuationBlocks.length
-          ? blockSeparator(inlineBodyType, continuationBlocks[0].type)
-          : '\n';
         const output = prefix +
           (continuation ? inlineBlockSeparator + continuation : '');
         nextOrdinal = itemOrdinal + 1;
