@@ -2243,11 +2243,15 @@ function htmlBlock(node, warnings, depth = 0, options = {}) {
   if (tag === 'pre') {
     const code = node.querySelector('code');
     const text = code?.textContent ?? node.textContent ?? '';
-    const language = code?.className.match(/(?:^|\s)language-([\w+-]+)/)?.[1] ?? '';
-    const content = text.replace(/\n+$/, '');
+    const language = code?.className.match(/(?:^|\s)language-([^\s]+)/)?.[1] ?? '';
+    const preserveCodeBlockText = Boolean(options.preserveCodeBlockText);
+    const content = preserveCodeBlockText ? text : text.replace(/\n+$/, '');
     const longestFence = Math.max(2, ...Array.from(content.matchAll(/`+/g), match => match[0].length));
     const fence = '`'.repeat(longestFence + 1);
-    return `${fence}${language}\n${content}\n${fence}`;
+    const codeBody = preserveCodeBlockText
+      ? content === '' || content.endsWith('\n') ? content : `${content}\n`
+      : `${content}\n`;
+    return `${fence}${language}\n${codeBody}${fence}`;
   }
   if (tag === 'blockquote') {
     return children({ ...options, escapeBlockSyntax: true })
@@ -2311,8 +2315,10 @@ function htmlBlock(node, warnings, depth = 0, options = {}) {
         const checkbox = item.querySelector(
           ':scope > input[type="checkbox"], :scope > p > input[type="checkbox"]'
         );
+        const orderedMarker = getOrderedMarkerLabel(orderedStyle, itemOrdinal);
+        const orderedDelimiter = options.orderedListDelimiter === ')' ? ')' : '.';
         const marker = ordered
-          ? getOrderedMarkerLabel(orderedStyle, itemOrdinal)
+          ? orderedMarker.replace(/[.)]$/, orderedDelimiter)
           : unorderedMarker;
         const task = checkbox ? `[${checkbox.checked ? 'x' : ' '}] ` : '';
         const bodyBlocks = [];
@@ -2688,6 +2694,8 @@ function isCommonMarkReferenceHtml(body) {
 }
 
 function importCommonMarkReferenceHtml(body, Parser, warnings, footnoteDefinitions) {
+  const unorderedListMarkerState = { lastByIndent: new Map() };
+  const orderedListDelimiters = new WeakMap();
   const converter = new TurndownService({
     headingStyle: 'atx',
     codeBlockStyle: 'fenced',
@@ -2696,17 +2704,90 @@ function importCommonMarkReferenceHtml(body, Parser, warnings, footnoteDefinitio
     strongDelimiter: '**',
     hr: '---'
   });
-  const markdownSource = converter.turndown(body);
-  const imported = convertFromMarkdown(markdownSource, 'commonmark', { DOMParser: Parser });
-  const markdown = [imported.markdown, ...footnoteDefinitions]
+  converter.escape = value => markdownText(value, {
+    escapeBlockSyntax: true,
+    wmdxSyntax: true
+  });
+  let literalBangMarker = String.fromCharCode(0xE000) + 'WMDX_LITERAL_BANG' + String.fromCharCode(0xE001);
+  while (body.textContent?.includes(literalBangMarker)) {
+    literalBangMarker += String.fromCharCode(0xE001);
+  }
+  for (const link of Array.from(body.querySelectorAll('a'))) {
+    const previous = link.previousSibling;
+    if (previous?.nodeType !== 3 || !previous.nodeValue?.endsWith('!')) continue;
+    previous.nodeValue = previous.nodeValue.slice(0, -1) + literalBangMarker;
+  }
+  converter.addRule('commonMarkHeading', {
+    filter: node => /^H[1-6]$/.test(node.nodeName),
+    replacement: (content, node) => {
+      const level = Number(node.nodeName[1]);
+      const safeContent = content.replace(/(^|\s)(#{1,6})[ \t]*$/g, (_, prefix, hashes) => prefix + '\\' + hashes);
+      return '\n\n' + '#'.repeat(level) + ' ' + safeContent + '\n\n';
+    }
+  });
+  converter.addRule('emptyImageDestination', {
+    filter: node => node.nodeName === 'IMG' && node.getAttribute('src') === '',
+    replacement: (_, node) => '!' + '[' + markdownText(node.getAttribute('alt') ?? '', {
+      escapeBlockSyntax: false,
+      wmdxSyntax: true
+    }) + ']()'
+  });
+  converter.addRule('emptyLinkDestination', {
+    filter: node => node.nodeName === 'A' && node.getAttribute('href') === '',
+    replacement: content => '[' + content + ']()'
+  });
+  const blockOptions = { unorderedListMarkerState, preserveCodeBlockText: true };
+  converter.addRule('commonMarkCodeBlock', {
+    filter: 'pre',
+    replacement: (_, node) => '\n\n' + htmlBlock(node, warnings, 0, blockOptions) + '\n\n'
+  });
+  converter.addRule('commonMarkBlockquote', {
+    filter: 'blockquote',
+    replacement: (_, node) => '\n\n' + htmlBlock(node, warnings, 0, blockOptions) + '\n\n'
+  });
+  converter.addRule('commonMarkList', {
+    filter: ['ul', 'ol'],
+    replacement: (_, node) => {
+      let orderedListDelimiter = '.';
+      if (node.nodeName === 'OL') {
+        let previous = node.previousSibling;
+        while (previous && (previous.nodeType === 8 ||
+          (previous.nodeType === 3 && !previous.nodeValue.trim()))) {
+          previous = previous.previousSibling;
+        }
+        const currentStart = Number(node.getAttribute('start')) || 1;
+        const currentCount = Array.from(node.children).filter(child => child.nodeName === 'LI').length;
+        if (previous?.nodeType === 1 && previous.nodeName === 'OL') {
+          const previousStart = Number(previous.getAttribute('start')) || 1;
+          const previousCount = Array.from(previous.children).filter(child => child.nodeName === 'LI').length;
+          const state = orderedListDelimiters.get(node.parentNode);
+          if (state?.node === previous && currentStart === previousStart + previousCount) {
+            orderedListDelimiter = state.delimiter === '.' ? ')' : '.';
+          }
+        }
+        orderedListDelimiters.set(node.parentNode, {
+          node,
+          delimiter: orderedListDelimiter,
+          end: currentStart + currentCount - 1
+        });
+      }
+      const markdown = htmlBlock(node, warnings, 0, {
+        ...blockOptions,
+        orderedListDelimiter
+      });
+      return '\n\n' + markdown + '\n\n';
+    }
+  });
+  let markdownSource = converter.turndown(body);
+  markdownSource = markdownSource.split(literalBangMarker).join('\\!');
+  const markdown = [markdownSource, ...footnoteDefinitions]
     .filter(Boolean)
     .join('\n\n');
   if (!markdown && body.textContent?.trim()) {
     throw new Error('No readable document content could be converted from this HTML.');
   }
-  return { markdown, warnings: [...warnings, ...imported.warnings] };
+  return { markdown, warnings };
 }
-
 export function convertFromHtml(
   source,
   Parser = globalThis.DOMParser,
