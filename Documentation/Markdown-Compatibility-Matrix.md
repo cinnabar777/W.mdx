@@ -57,6 +57,22 @@ Run the HTML wrapper tests through the Android unit-test task:
 ./gradlew testDebugUnitTest
 ```
 
+## Parser, renderer, and editor reference survey (not adopted)
+
+This survey records candidate tools and behavioral references, not completed compatibility or production dependencies. W.mdx is proprietary, so every candidate needs a direct and transitive license review before adoption.
+
+| Area | Candidate and license | Evidence and fit | Boundary |
+| --- | --- | --- | --- |
+| CommonMark parsing | [commonmark.js](https://github.com/commonmark/commonmark.js), BSD-2-Clause | JavaScript reference implementation that parses to a manipulable AST; `commonmark@0.31.2` is already pinned in web development dependencies. | It is currently a test/reference dependency, not the production import parser. |
+| GFM parsing | [remark-parse](https://github.com/remarkjs/remark) plus [remark-gfm](https://github.com/remarkjs/remark-gfm), MIT | Unified/MDAST pipeline for GFM autolinks, footnotes, strikethrough, tables, and task lists; both expose tree-level conversion points. [micromark](https://github.com/micromark/micromark) and its GFM extension are another MIT option with positional tokens. | Compare parser outputs against the pinned GFM examples before selecting one runtime path; frontmatter and Wmdx syntax remain separate layers. |
+| Obsidian syntax parsing | [remark-obsidian-md](https://github.com/adrianoaraujods/obsidian-md/tree/main/packages/remark-obsidian-md), MIT | Browser-safe MDAST plugin; documents wiki links, embeds, callouts, highlights, comments, block IDs, and inline footnotes. A disposable smoke test parsed nested tasks, wiki links, an image embed, a callout, a GFM table, and a Mermaid fence while retaining source positions. | Community implementation, not Obsidian's parser. It delegates GFM and math, leaves Mermaid as a code node, and needs fixture parity plus a full transitive-license audit before adoption. |
+| Editor syntax parsing | [lezer-markdown-obsidian](https://github.com/erykwalder/lezer-markdown-obsidian), MIT | Obsidian-specific extensions for CodeMirror/Lezer; potentially useful for source highlighting. | Its README explicitly says parsing is best-effort and not Obsidian's parser. It depends on `@lezer/markdown` 0.15.x while W.mdx uses 1.3.x, so it is not a drop-in dependency. |
+| Mermaid rendering | [Mermaid](https://github.com/mermaid-js/mermaid), MIT | Separate renderer for Mermaid fenced blocks; it complements rather than replaces Markdown parsing. | W.mdx must preserve the complete fence, render it only in supported views, and test loading cost and exported HTML separately. |
+| Obsidian HTML exporters | [krissrex/obsidian-html](https://github.com/krissrex/obsidian-html) and the separate [obsidian-html/obsidian-html](https://github.com/obsidian-html/obsidian-html) project | The first is a Python converter built around `markdown2`; the second converts Obsidian notes to standard Markdown and then uses Python-Markdown with custom extensions. Their examples can inform behavior and fixtures. | Neither is a browser JavaScript parser. The current successor is GPL-3.0-or-later, so do not bundle it into W.mdx without an explicit licensing decision. |
+| List editing behavior | [CKEditor 5 list source](https://github.com/cinnabar777/ckeditor5/tree/master/packages/ckeditor5-list/src/list) and [list-editing guide](https://ckeditor.com/docs/ckeditor5/latest/features/lists/lists-editing.html) | Its model stores list type, indent, and item identity across blocks, with walkers and post-fixers that maintain list invariants; the guide covers multi-block items and keyboard editing. | CKEditor 5 is GPL-2.0-or-later or commercially licensed. Use behavior and test cases as references; do not copy its code into proprietary W.mdx without a license decision. |
+
+The smoke test establishes only that a browser-safe parser pipeline can produce useful positioned nodes for a sample. It does not prove exact Obsidian parity, Wmdx serialization, or round-trip preservation. The production converter remains unchanged until a candidate passes focused dialect fixtures and dependency-license review.
+
 ## Known exclusions and next gates
 
 - CommonMark raw HTML interoperability remains separate from native Markdown parsing. All 77 upstream HTML cases are individually classified, with semantic-preservation or warning-checked intentional security-loss assertions and zero pending cases. This closes the pinned examples only, not every possible HTML nesting or import/export combination.
