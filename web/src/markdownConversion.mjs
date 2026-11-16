@@ -3151,7 +3151,7 @@ function importCommonMarkReferenceHtml(body, Parser, warnings, footnoteDefinitio
   const softBreakParts = markdownSource.split(softBreakMarker);
   markdownSource = softBreakParts.map((part, index) => {
     if (index === 0) return part;
-    return part.replace(/^([ \t]{0,3})(\d{1,9})\\([.)](?=[ \t])/, (whole, indent, digits, delimiter) =>
+    return part.replace(/^([ \t]{0,3})(\d{1,9})\\([.)])(?=[ \t])/, (whole, indent, digits, delimiter) =>
       Number(digits) === 1 ? whole : `${indent}${digits}${delimiter}`
     );
   }).join(softBreakMarker);
