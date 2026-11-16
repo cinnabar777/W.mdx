@@ -188,6 +188,31 @@ test('Obsidian wiki-link annotation does not replace embedded attachment URLs', 
   );
 });
 
+test('embedded media keeps its source filename after HTML export inlines the asset', () => {
+  const dom = new JSDOM('');
+  const dataUri = 'data:audio/wav;base64,AQID';
+  const result = renderMarkdownHtml(
+    '<audio controls src="audio/birdsong.wav"></audio>',
+    {
+      profile: 'gfm',
+      window: dom.window,
+      resolveAssetDataUri: reference =>
+        reference === 'audio/birdsong.wav' ? dataUri : null
+    }
+  );
+  const document = new dom.window.DOMParser().parseFromString(result.html, 'text/html');
+  const audio = document.querySelector('audio');
+
+  assert.equal(audio?.getAttribute('src'), dataUri);
+  assert.equal(audio?.getAttribute('data-wmdx-original-src'), 'audio/birdsong.wav');
+  assert.equal(audio?.getAttribute('aria-label'), 'birdsong.wav');
+  const imported = convertFromHtml(result.html, dom.window.DOMParser);
+  assert.match(
+    imported.markdown,
+    /\[birdsong\.wav\]\(data:audio\/wav;base64,AQID "wmdx-audio"\)/
+  );
+});
+
 test('HTML export preserves Obsidian open links without allowing arbitrary app schemes', () => {
   const { dom, result } = render(
     '[Note](obsidian://open?vault=MainVault&file=Note.md)\n\n' +

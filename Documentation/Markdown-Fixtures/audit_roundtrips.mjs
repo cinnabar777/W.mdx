@@ -125,41 +125,84 @@ function summarizeNode(value) {
   };
 }
 
-function firstDifference(before, after, pathName = 'document', parent = null) {
-  if (JSON.stringify(before) === JSON.stringify(after)) return null;
-  if (!Array.isArray(before) || !Array.isArray(after)) {
-    return { path: pathName, before, after, within: parent };
-  }
-  const currentParent = before.length === 3 &&
-    after.length === 3 &&
-    typeof before[0] === 'string' &&
-    typeof after[0] === 'string' &&
-    Array.isArray(before[1]) &&
-    Array.isArray(after[1]) &&
-    Array.isArray(before[2]) &&
-    Array.isArray(after[2])
-    ? { before: summarizeNode(before), after: summarizeNode(after) }
-    : parent;
-  const length = Math.max(before.length, after.length);
-  for (let index = 0; index < length; index += 1) {
-    if (index >= before.length || index >= after.length) {
-      return {
-        path: `${pathName}[${index}]`,
-        before: before[index] ?? '(missing)',
-        after: after[index] ?? '(missing)',
-        within: currentParent
-      };
+function collectDifferences(before, after, limit = 12) {
+  const differences = [];
+  let count = 0;
+  const summarize = value => {
+    if (typeof value === 'string' && value.length > 180) {
+      return `${value.slice(0, 180)}… (${value.length} chars)`;
     }
-    if (JSON.stringify(before[index]) !== JSON.stringify(after[index])) {
-      return firstDifference(
-        before[index],
-        after[index],
-        `${pathName}[${index}]`,
-        currentParent
-      );
+    if (Array.isArray(value)) {
+      if (
+        value.length === 3 &&
+        typeof value[0] === 'string' &&
+        Array.isArray(value[1]) &&
+        Array.isArray(value[2])
+      ) {
+        return summarizeNode(value);
+      }
+      if (value.length === 2 && typeof value[0] === 'string') {
+        return [value[0], summarize(value[1])];
+      }
+      return `[array with ${value.length} entries]`;
     }
-  }
-  return null;
+    return value;
+  };
+  const visit = (left, right, pathName = 'document', parent = null) => {
+    if (JSON.stringify(left) === JSON.stringify(right)) return;
+    if (!Array.isArray(left) || !Array.isArray(right)) {
+      count += 1;
+      if (differences.length < limit) {
+        differences.push({
+          path: pathName,
+          before: summarize(left ?? '(missing)'),
+          after: summarize(right ?? '(missing)'),
+          within: parent
+        });
+      }
+      return;
+    }
+
+    const currentParent = left.length === 3 &&
+      right.length === 3 &&
+      typeof left[0] === 'string' &&
+      typeof right[0] === 'string' &&
+      Array.isArray(left[1]) &&
+      Array.isArray(right[1]) &&
+      Array.isArray(left[2]) &&
+      Array.isArray(right[2])
+      ? { before: summarizeNode(left), after: summarizeNode(right) }
+      : parent;
+    if (left.length !== right.length) {
+      count += 1;
+      if (differences.length < limit) {
+        differences.push({
+          path: `${pathName}.length`,
+          before: left.length,
+          after: right.length,
+          within: currentParent
+        });
+      }
+    }
+    const length = Math.max(left.length, right.length);
+    for (let index = 0; index < length; index += 1) {
+      if (index >= left.length || index >= right.length) {
+        count += 1;
+        if (differences.length < limit) {
+          differences.push({
+            path: `${pathName}[${index}]`,
+            before: summarize(left[index] ?? '(missing)'),
+            after: summarize(right[index] ?? '(missing)'),
+            within: currentParent
+          });
+        }
+      } else {
+        visit(left[index], right[index], `${pathName}[${index}]`, currentParent);
+      }
+    }
+  };
+  visit(before, after);
+  return { count, differences };
 }
 
 function lineDiff(beforeText, afterText) {
@@ -345,7 +388,14 @@ for (const [name, entry, sourceProfile] of fixtures) {
     ]);
     console.log(`Rendered HTML meaning: ${meaningMatches ? 'same' : 'DIFFERENT'}.`);
     if (!meaningMatches) {
-      console.log(`First rendered divergence: ${JSON.stringify(firstDifference(beforeMeaning, afterMeaning))}`);
+      const differences = collectDifferences(beforeMeaning, afterMeaning);
+      console.log(
+        `Rendered DOM differences: ${differences.count}; showing ` +
+        `${differences.differences.length} (maximum 12).`
+      );
+      console.log(differences.differences.map(value =>
+        `- ${JSON.stringify(value)}`
+      ).join('\n'));
     }
     console.log(`Unique conversion warnings: ${warnings.length}.`);
     console.log(warnings.length ? warnings.map(value => `- ${value}`).join('\n') : '- No conversion warnings.');
@@ -366,10 +416,9 @@ for (const [name, entry, sourceProfile] of fixtures) {
     window: dom.window,
     resolveAssetDataUri: reference => resolveFixtureAssetDataUri(name, reference)
   });
-  const htmlComparison = firstDifference(
-    canonicalizeHtml(htmlBefore.html),
-    canonicalizeHtml(htmlAfter.html)
-  );
+  const beforeHtmlMeaning = canonicalizeHtml(htmlBefore.html);
+  const afterHtmlMeaning = canonicalizeHtml(htmlAfter.html);
+  const htmlDifferences = collectDifferences(beforeHtmlMeaning, afterHtmlMeaning);
   const beforeCounts = structureCounts(htmlBefore.html);
   const afterCounts = structureCounts(htmlAfter.html);
   const structuralChanges = Object.entries(beforeCounts)
@@ -384,9 +433,15 @@ for (const [name, entry, sourceProfile] of fixtures) {
   ]);
 
   console.log(`\n## ${name}: ${sourceProfile} → semantic HTML → ${sourceProfile}`);
-  console.log(`Rendered HTML meaning: ${htmlComparison ? 'DIFFERENT' : 'same'}.`);
-  if (htmlComparison) {
-    console.log(`First HTML difference: ${JSON.stringify(htmlComparison)}`);
+  console.log(`Rendered HTML meaning: ${htmlDifferences.count ? 'DIFFERENT' : 'same'}.`);
+  if (htmlDifferences.count) {
+    console.log(
+      `Rendered DOM differences: ${htmlDifferences.count}; showing ` +
+      `${htmlDifferences.differences.length} (maximum 12).`
+    );
+    console.log(htmlDifferences.differences.map(value =>
+      `- ${JSON.stringify(value)}`
+    ).join('\n'));
   }
   console.log(
     structuralChanges.length

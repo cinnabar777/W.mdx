@@ -157,6 +157,33 @@ function enhanceImportedMediaLinks(document) {
   }
 }
 
+function ensureMediaLabels(document) {
+  for (const media of document.querySelectorAll('audio, video')) {
+    if (media.getAttribute('aria-label')?.trim()) continue;
+    const sourceNode = media.querySelector('source[src]');
+    const source = media.getAttribute('data-wmdx-original-src') ||
+      media.getAttribute('src') ||
+      sourceNode?.getAttribute('data-wmdx-original-src') ||
+      sourceNode?.getAttribute('src') ||
+      '';
+    const fallback = media.tagName.toLowerCase() === 'audio'
+      ? 'Audio attachment'
+      : 'Video attachment';
+    if (!source || /^data:/i.test(source)) {
+      media.setAttribute('aria-label', fallback);
+      continue;
+    }
+    let filename = '';
+    try {
+      const pathname = new URL(source, 'https://wmdx.invalid/').pathname;
+      filename = decodeURIComponent(pathname.split('/').filter(Boolean).at(-1) ?? '');
+    } catch {
+      filename = '';
+    }
+    media.setAttribute('aria-label', filename || fallback);
+  }
+}
+
 function protectedMarkdownRanges(source) {
   const fenced = [];
   const lines = [];
@@ -599,6 +626,10 @@ export function renderMarkdownHtml(source, {
         }
         const dataUri = resolvedAssets.get(reference);
         if (typeof dataUri === 'string' && /^data:[^,]+;base64,/i.test(dataUri)) {
+          const originalAttribute = `data-wmdx-original-${attribute}`;
+          if (!element.hasAttribute(originalAttribute)) {
+            element.setAttribute(originalAttribute, reference);
+          }
           element.setAttribute(attribute, dataUri);
         } else {
           assetWarnings.push(
@@ -608,6 +639,7 @@ export function renderMarkdownHtml(source, {
       }
     }
   }
+  ensureMediaLabels(parsed);
 
   const purifier = createDOMPurify(window);
   purifier.addHook('uponSanitizeAttribute', (node, data) => {
@@ -628,7 +660,9 @@ export function renderMarkdownHtml(source, {
     ADD_ATTR: [
       'controls', 'preload', 'poster', 'width', 'height', 'download',
       'start', 'checked', 'disabled', 'colspan', 'rowspan',
-      'data-wmdx-kind', 'data-wmdx-target'
+      'data-wmdx-kind', 'data-wmdx-target',
+      'data-wmdx-original-src', 'data-wmdx-original-href',
+      'data-wmdx-original-poster'
     ],
     ADD_DATA_URI_TAGS: ['audio', 'video', 'source', 'a', 'img'],
     FORBID_TAGS: ['style', 'link', 'iframe', 'object', 'embed', 'form']
