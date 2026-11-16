@@ -9,6 +9,8 @@ const fixture = JSON.parse(fs.readFileSync(
 ));
 
 test('GFM 0.29 non-HTML extension examples preserve semantics through import and export', async () => {
+  const { JSDOM } = require('jsdom');
+  const { marked } = require('marked');
   const { EditorState } = await import('@codemirror/state');
   const { markdown } = await import('@codemirror/lang-markdown');
   const { syntaxTree } = await import('@codemirror/language');
@@ -19,6 +21,21 @@ test('GFM 0.29 non-HTML extension examples preserve semantics through import and
   const { getMarkdownLinkInfo } = await import('../src/markdown-link-utils.mjs');
   const { convertFromMarkdown, exportMarkdown } =
     await import('../src/markdownConversion.mjs');
+  const DOMParser = new JSDOM('').window.DOMParser;
+  const summarizeHtml = html => {
+    const document = new DOMParser().parseFromString(html, 'text/html');
+    return {
+      text: document.body.textContent.replace(/\s+/g, ' ').trim(),
+      elements: Array.from(document.body.querySelectorAll('*'), element => [
+        element.tagName.toLowerCase(),
+        ...['href', 'align', 'type', 'checked', 'disabled', 'start', 'value']
+          .map(attribute => element.hasAttribute(attribute)
+            ? `${attribute}=${element.getAttribute(attribute)}`
+            : null)
+          .filter(Boolean)
+      ])
+    };
+  };
   const extensions = [
     Autolink,
     Table,
@@ -107,6 +124,17 @@ test('GFM 0.29 non-HTML extension examples preserve semantics through import and
       exportedActual,
       example.expected,
       `GFM import/export ${example.section} example ${example.number}`
+    );
+    const warnings = [...new Set([...imported.warnings, ...exported.warnings])];
+    assert.deepEqual(
+      warnings,
+      [],
+      `GFM ${example.section} example ${example.number} converts without loss warnings`
+    );
+    assert.deepEqual(
+      summarizeHtml(marked.parse(exported.markdown, { gfm: true })),
+      summarizeHtml(marked.parse(example.markdown, { gfm: true })),
+      `GFM ${example.section} example ${example.number} preserves rendered meaning through conversion`
     );
 
     if (example.number === 628) {

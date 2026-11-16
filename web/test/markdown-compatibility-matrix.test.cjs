@@ -677,3 +677,41 @@ test('MHTML TOC HTML imports into the selected Markdown flavor', async () => {
     );
   }
 });
+
+test('Curated Obsidian syntax cases preserve semantics through Wmdx round trips', async t => {
+  const examples = require('./fixtures/obsidian-rendering.json').cases;
+  const { convertFromMarkdown, exportMarkdown } =
+    await import('../src/markdownConversion.mjs');
+  const { renderMarkdownHtml } = await import('../src/htmlExport.mjs');
+  const dom = new JSDOM('');
+  const document = dom.window.document;
+  assert.equal(examples.length, 7);
+
+  for (const example of examples) {
+    await t.test(example.feature, () => {
+      const imported = convertFromMarkdown(example.markdown, 'obsidian');
+      const exported = exportMarkdown(imported.markdown, 'obsidian');
+      const before = renderMarkdownHtml(example.markdown, {
+        profile: 'obsidian',
+        window: dom.window
+      });
+      const after = renderMarkdownHtml(exported.markdown, {
+        profile: 'obsidian',
+        window: dom.window
+      });
+      const expectedMarkdown = example.feature === 'callout with formatted body'
+        ? `${example.markdown}\n`
+        : example.markdown;
+
+      assert.deepEqual(imported.warnings, []);
+      assert.deepEqual(exported.warnings, []);
+      assert.equal(exported.markdown, expectedMarkdown);
+      assert.deepEqual(after.warnings, before.warnings);
+      assert.equal(
+        canonicalizeHtml(after.html, document),
+        canonicalizeHtml(before.html, document),
+        `${example.feature} preserves its rendered meaning`
+      );
+    });
+  }
+});
