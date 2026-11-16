@@ -603,20 +603,39 @@ test('Obsidian callout, wikilink, highlight, and footnote survive HTML round tri
 
 test('MHTML TOC HTML imports into the selected Markdown flavor', async () => {
   const { convertHtmlToMarkdownProfile } = await import('../src/markdownPaste.mjs');
+  const { convertFromMarkdown, exportMarkdown } =
+    await import('../src/markdownConversion.mjs');
   const { JSDOM } = require('jsdom');
   const dom = new JSDOM('');
-  const root = 'https://appassets.androidplatform.net/assets/www/';
+  const pageUrl = 'https://appassets.androidplatform.net/assets/www/document.html';
   const html = [
-    '<nav><a href="https://appassets.androidplatform.net/assets/www/#heading-1">Project setup</a></nav>',
+    '<nav class="toc-container"><h2 class="toc-title">Table of Contents</h2>',
+    '<ul class="toc-list">',
+    `<li class="toc-item"><a href="${pageUrl}#heading-1">Project setup</a></li>`,
+    `<li class="toc-item"><a href="${pageUrl}#heading-2">Second copy</a></li>`,
+    '</ul></nav>',
     '<h1 id="heading-1">Project Setup</h1>',
+    '<h1 id="heading-2">Project Setup</h1>',
     '<p><a href="https://outside.example/#heading-1">External reference</a></p>'
   ].join('');
 
   const expected = {
-    wmdx: /^\[#Project Setup\|Project setup\|\|\]$/m,
-    commonmark: /\[Project setup\]\(#project-setup\)/,
-    gfm: /\[Project setup\]\(#project-setup\)/,
-    obsidian: /^\[\[#Project Setup\|Project setup\]\]$/m
+    wmdx: [
+      /^- \[#Project Setup\|Project setup\|\|\]$/m,
+      /^- \[#Project Setup 1\|Second copy\|\|\]$/m
+    ],
+    commonmark: [
+      /\[Project setup\]\(#project-setup\)/,
+      /\[Second copy\]\(#project-setup-1\)/
+    ],
+    gfm: [
+      /\[Project setup\]\(#project-setup\)/,
+      /\[Second copy\]\(#project-setup-1\)/
+    ],
+    obsidian: [
+      /^- \[\[#Project Setup\|Project setup\]\]$/m,
+      /^- \[\[#Project Setup 1\|Second copy\]\]$/m
+    ]
   };
 
   for (const profile of ['wmdx', 'commonmark', 'gfm', 'obsidian']) {
@@ -624,10 +643,17 @@ test('MHTML TOC HTML imports into the selected Markdown flavor', async () => {
       html,
       profile,
       dom.window.DOMParser,
-      { baseLocation: root }
+      { baseLocation: pageUrl }
     );
     assert.deepEqual(converted.warnings, [], `${profile} warnings`);
-    assert.match(converted.markdown, expected[profile], `${profile} TOC syntax`);
+    for (const pattern of expected[profile]) {
+      assert.match(converted.markdown, pattern, `${profile} TOC syntax`);
+    }
+    assert.doesNotMatch(
+      converted.markdown,
+      /^ {2,}- /m,
+      `${profile} generated TOC items must remain a flat list`
+    );
     assert.match(
       converted.markdown,
       /\[External reference\]\(https:\/\/outside\.example\/#heading-1\)/,
@@ -637,6 +663,17 @@ test('MHTML TOC HTML imports into the selected Markdown flavor', async () => {
       converted.markdown,
       /appassets\.androidplatform\.net/,
       `${profile} must not leak the MHTML archive base into Markdown`
+    );
+    const importedAgain = profile === 'wmdx'
+      ? converted
+      : convertFromMarkdown(converted.markdown, profile);
+    const roundTripped = profile === 'wmdx'
+      ? importedAgain
+      : exportMarkdown(importedAgain.markdown, profile);
+    assert.equal(
+      roundTripped.markdown,
+      converted.markdown,
+      `${profile} TOC export/import must be stable`
     );
   }
 });

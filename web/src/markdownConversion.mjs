@@ -491,13 +491,20 @@ function convertInlineLinksToWmdx(line, warnings) {
 
 function buildHeadingFragmentLookup(lines, protectedLines) {
   const headings = new Map();
+  const occurrences = new Map();
   for (let index = 0; index < lines.length; index += 1) {
     if (protectedLines.has(index)) continue;
     const match = /^\.([1-6])\s+(.+?)\s*$/.exec(lines[index]);
     if (!match) continue;
     const title = match[2].trim();
-    const slug = headingFragmentSlug(title);
-    if (slug && !headings.has(slug)) headings.set(slug, title);
+    const base = headingFragmentSlug(title);
+    if (!base) continue;
+    const occurrence = occurrences.get(base) ?? 0;
+    occurrences.set(base, occurrence + 1);
+    const fragment = occurrence === 0 ? base : `${base}-${occurrence}`;
+    if (!headings.has(fragment)) {
+      headings.set(fragment, occurrence === 0 ? title : `${title} ${occurrence}`);
+    }
   }
   return headings;
 }
@@ -505,6 +512,7 @@ function buildHeadingFragmentLookup(lines, protectedLines) {
 function removeRedundantHeadingAnchors(lines, protectedLines) {
   const nextLines = [];
   const nextProtectedLines = new Set();
+  const headingOccurrences = new Map();
   for (let index = 0; index < lines.length; index += 1) {
     if (!protectedLines.has(index)) {
       const anchor = /^\s*<a\s+id=["']([^"']+)["']\s*><\/a>\s*$/i.exec(lines[index]);
@@ -514,12 +522,23 @@ function removeRedundantHeadingAnchors(lines, protectedLines) {
         const heading = !protectedLines.has(headingIndex)
           ? /^\.([1-6])\s+(.+?)\s*$/.exec(lines[headingIndex] ?? '')
           : null;
-        if (heading &&
-            headingFragmentSlug(anchor[1]) === headingFragmentSlug(heading[2])) {
-          index = headingIndex - 1;
-          continue;
+        if (heading) {
+          const base = headingFragmentSlug(heading[2]);
+          const occurrence = headingOccurrences.get(base) ?? 0;
+          const expectedFragment = occurrence === 0 ? base : `${base}-${occurrence}`;
+          if (anchor[1].toLocaleLowerCase() === expectedFragment.toLocaleLowerCase()) {
+            index = headingIndex - 1;
+            continue;
+          }
         }
       }
+    }
+    const heading = !protectedLines.has(index)
+      ? /^\.([1-6])\s+(.+?)\s*$/.exec(lines[index])
+      : null;
+    if (heading) {
+      const base = headingFragmentSlug(heading[2]);
+      if (base) headingOccurrences.set(base, (headingOccurrences.get(base) ?? 0) + 1);
     }
     if (protectedLines.has(index)) nextProtectedLines.add(nextLines.length);
     nextLines.push(lines[index]);
@@ -1968,6 +1987,12 @@ function htmlBlock(node, warnings, depth = 0, options = {}) {
   const inline = (inlineOptions = options) => Array.from(node.childNodes)
     .map(child => inlineHtmlNode(child, warnings, inlineOptions)).join('');
 
+  if (tag === 'nav') {
+    return Array.from(node.childNodes)
+      .map(child => htmlBlock(child, warnings, depth, options))
+      .filter(value => value.trim() !== '')
+      .join('\n\n');
+  }
   if (['script', 'style', 'iframe', 'object', 'embed', 'form'].includes(tag)) {
     addWarning(warnings, `Active HTML element <${tag}> was omitted.`);
     return '';
