@@ -16,6 +16,20 @@ For every supported Markdown feature, record **HTML export** and **HTML import**
 
 Use established dialect parsers, renderers, and import/export implementations as reference behavior and candidate components. First identify what they already support, their license and runtime constraints, and where their behavior differs from Wmdx; implement custom adapters only for demonstrated gaps. Mark a feature complete only when its import and export evidence is independently recorded.
 
+## Faster implementation without fake coverage
+
+Use a small, change-aware test gate rather than rerunning every combination after every edit:
+
+1. **Feature change:** run the one-feature parser/serializer test, independent HTML input and output cases for that feature, and only its affected editor interaction test.
+2. **Shared parser, HTML mapping, or serializer change:** run the relevant upstream CommonMark/GFM corpus and the affected cross-dialect conversion slice.
+3. **Integration or release gate:** run all dialect HTML ledgers, complete fixture archives, and the broader conversion suite. Run the full editor interaction/device matrix only when shared editor behavior changes or before a release.
+
+The full compatibility suites remain required evidence at the integration/release gates; they are not repeated as a substitute for a focused test on every small change. Reuse a licensed parser or converter when it already passes the relevant feature cases, and write an adapter only for a measured mismatch. Keep every known loss listed; a faster gate must not silently turn pending rows into passes.
+
+### Document Appearance requirement for added syntax
+
+When compatibility work adds a dialect feature Wmdx does not already support, add a clearly named section for that feature under **Document Appearance**, with its actual display controls and defaults. For example, Mermaid support needs controls for whether diagrams render and how their presentation behaves; when rendering is disabled or unavailable, the original fenced source must remain available. Tests must change each new setting through its real control, verify its effect, and verify reset/default behavior. A parser that merely preserves syntax does not satisfy this rendered-feature requirement.
+
 ## Executable matrix
 
 | Input and route | Verified scope | Evidence | Status / boundary |
