@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       suite:
-        description: Select one editor regression
+        description: Select one focused regression
         type: choice
         required: true
         default: list-caret
@@ -12,6 +12,7 @@ on:
           - list-caret
           - tables
           - interactions
+          - commonmark-html
 
 jobs:
   browser:
@@ -29,11 +30,18 @@ jobs:
         working-directory: web
         run: npm ci
 
+      - name: Run CommonMark HTML import/export parity
+        if: inputs.suite == 'commonmark-html'
+        working-directory: web
+        run: node --test test/commonmark-html-parity.test.cjs
+
       - name: Build Web Bundle
+        if: inputs.suite != 'commonmark-html'
         working-directory: web
         run: npm run build
 
       - name: Install Playwright Chromium
+        if: inputs.suite != 'commonmark-html'
         working-directory: web
         run: npx playwright install --with-deps chromium
 
