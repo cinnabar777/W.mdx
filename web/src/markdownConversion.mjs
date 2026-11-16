@@ -2254,8 +2254,9 @@ function htmlBlock(node, warnings, depth = 0, options = {}) {
     return `${fence}${language}\n${codeBody}${fence}`;
   }
   if (tag === 'blockquote') {
-    return children({ ...options, escapeBlockSyntax: true })
-      .join('\n\n').split('\n').map(line => `> ${line}`).join('\n');
+    const quoteContent = children({ ...options, escapeBlockSyntax: true }).join('\n\n');
+    if (!quoteContent.trim()) return '';
+    return quoteContent.split('\n').map(line => `> ${line}`).join('\n');
   }
   if (tag === 'ul' || tag === 'ol') {
     const ordered = tag === 'ol';
@@ -2781,6 +2782,13 @@ function importCommonMarkReferenceHtml(body, Parser, warnings, footnoteDefinitio
     hr: '---',
     blankReplacement: (_, node) => {
       if (node.nodeType !== 1) return '\n\n';
+      const tag = node.tagName.toLowerCase();
+      const preserveBlankNode = tag === 'pre' ||
+        tag === 'ul' || tag === 'ol' ||
+        (tag === 'blockquote' && node.querySelector('pre, ul, ol, hr, table')) ||
+        (tag === 'p' && node.querySelector('a[href], img[src], code')) ||
+        (tag === 'a' && node.hasAttribute('href'));
+      if (!preserveBlankNode) return '\n\n';
       const markdown = htmlBlock(node, warnings, 0, blockOptions);
       return markdown ? '\n\n' + markdown + '\n\n' : '\n\n';
     }
@@ -2802,7 +2810,8 @@ function importCommonMarkReferenceHtml(body, Parser, warnings, footnoteDefinitio
     filter: node => /^H[1-6]$/.test(node.nodeName),
     replacement: (content, node) => {
       const level = Number(node.nodeName[1]);
-      const safeContent = content.replace(/(^|\s)(#{1,6})[ \t]*$/g, (_, prefix, hashes) => prefix + '\\' + hashes);
+      const normalizedContent = content.replace(/\s+/g, ' ').trim();
+      const safeContent = normalizedContent.replace(/(^|\s)(#{1,6})[ \t]*$/g, (_, prefix, hashes) => prefix + String.fromCharCode(92) + hashes);
       return '\n\n' + '#'.repeat(level) + ' ' + safeContent + '\n\n';
     }
   });
