@@ -2768,7 +2768,7 @@ function importCommonMarkReferenceHtml(body, Parser, warnings, footnoteDefinitio
         leadingNbspMarkers.set(marker, '&nbsp;'.repeat(leading.length));
         textNode.nodeValue = marker + textNode.nodeValue.slice(leading.length);
       }
-      textNode.nodeValue = textNode.nodeValue.replace(/\r\n?/g, softBreakMarker);
+      textNode.nodeValue = textNode.nodeValue.replace(/\r?\n/g, softBreakMarker);
     }
     textNode = textWalker.nextNode();
   }
