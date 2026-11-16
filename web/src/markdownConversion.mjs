@@ -1062,7 +1062,6 @@ function convertObsidianCallouts(lines, protectedLines, format) {
 }
 
 function convertInlineHtmlToMarkdown(line, warnings, Parser, options = {}) {
-  if (options.preserveUnsupportedHtmlAsRaw) return String(line ?? '');
   const protectedValues = [];
   const protect = value => {
     const marker = `\uE010${protectedValues.length}\uE011`;
@@ -1086,6 +1085,12 @@ function convertInlineHtmlToMarkdown(line, warnings, Parser, options = {}) {
     )
     .replace(/<!--[\s\S]*?-->/g, protect);
   text = protectTagMarkupInsideAttributes(text, protect);
+  if (options.preserveUnsupportedHtmlAsRaw) {
+    text = text.replace(
+      /<(del|ins|i|u|sup|sub|mark|kbd)\b[^>]*>[\s\S]*?<\/\1\s*>/gi,
+      protect
+    );
+  }
   for (const range of nestedInlineEmphasisHtmlRanges(text).sort((left, right) =>
     right.from - left.from
   )) {
@@ -1100,12 +1105,16 @@ function convertInlineHtmlToMarkdown(line, warnings, Parser, options = {}) {
         if (isEscapedMarkdownDelimiter(wholeText, offset)) return source;
         const media = new Parser().parseFromString(source, 'text/html')
           .querySelector(tag.toLowerCase());
-        return media ? htmlBlock(media, warnings) : source;
+        return media ? htmlBlock(media, warnings, 0, { preserveUnsupportedHtmlAsRaw }) : source;
       }
     );
     text = text.replace(/<a\b[^>]*>[\s\S]*?<\/a\s*>/gi, (source, offset, wholeText) => {
       if (isEscapedMarkdownDelimiter(wholeText, offset)) return source;
       const anchor = new Parser().parseFromString(source, 'text/html').querySelector('a');
+      if (
+        anchor &&
+        shouldPreserveRawHtmlLink(anchor, { preserveUnsupportedHtmlAsRaw })
+      ) return protect(source);
       if (
         anchor &&
         !anchor.textContent?.trim() &&
@@ -1117,7 +1126,7 @@ function convertInlineHtmlToMarkdown(line, warnings, Parser, options = {}) {
         );
         return protect(source);
       }
-      return anchor ? inlineHtmlNode(anchor, warnings) : source;
+      return anchor ? inlineHtmlNode(anchor, warnings, { preserveUnsupportedHtmlAsRaw }) : source;
     });
   }
   text = text
