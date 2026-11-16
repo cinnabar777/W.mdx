@@ -13,8 +13,9 @@ on:
           - tables
           - interactions
           - commonmark-html
+          - commonmark-raw-html
       commonmark_cases:
-        description: Optional comma-separated CommonMark example numbers; blank runs all 575
+        description: For commonmark-html: non-raw-HTML example numbers; blank runs all 575
         type: string
         required: false
         default: ''
@@ -41,6 +42,14 @@ jobs:
         env:
           COMMONMARK_CASES: ${{ inputs.commonmark_cases }}
         run: node --test test/commonmark-html-parity.test.cjs
+
+      - name: Run CommonMark raw HTML and security interop cases
+        if: inputs.suite == 'commonmark-raw-html'
+        working-directory: web
+        run: |
+          node --test \
+            --test-name-pattern='CommonMark (raw HTML|active HTML|inline HTML|angle-bracket link|HTML cases)' \
+            test/commonmark-spec.test.cjs
 
       - name: Build Web Bundle
         if: inputs.suite != 'commonmark-html'
