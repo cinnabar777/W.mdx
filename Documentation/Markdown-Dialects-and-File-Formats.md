@@ -19,7 +19,7 @@ Source pipe tables stay literal and editable. A nested Source editor scrolls the
 
 ## What the syntax toggles do
 
-Settings are app-wide, not stored in each document. **Markdown & Dialects** provides a primary Wmdx, CommonMark, GFM, or Obsidian profile. The profile sets default syntax recognition and authoring choices for supported features. A saved feature-specific choice overrides the profile; changing the profile does not rewrite source or replace an explicitly saved choice.
+Settings are app-wide, not stored in each document. **Markdown & Dialects** provides a primary Wmdx, CommonMark, GFM, or Obsidian profile. The profile sets default syntax recognition and authoring choices for supported features. Fresh installs and **Reset All** start with CommonMark; Wmdx-only syntax, GFM/Obsidian extensions, callouts, and footnotes are disabled by default. Existing saved choices are preserved; changing the profile does not rewrite source or replace an explicitly saved choice.
 
 Turning a feature or spelling off does not rewrite or delete source. It only changes recognition/rendering and authoring behavior. Import and export conversion remain separate actions.
 

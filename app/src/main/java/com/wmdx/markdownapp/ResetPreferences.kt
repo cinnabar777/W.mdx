@@ -802,7 +802,7 @@ object PreferenceResetHelper {
             key == "pref_settings_bg_color" -> "#000000"
             key == "pref_hide_status_bar" -> false
             key == "pref_hide_nav_bar" -> false
-            key == "pref_markdown_profile" -> "gfm"
+            key == "pref_markdown_profile" -> "commonmark"
             key == "pref_editor_mode" -> "rendered"
             key == "pref_markdown_syntax_exposure" -> "hidden"
             key == "pref_export_format" -> "html"
@@ -1333,7 +1333,7 @@ object PreferenceResetHelper {
         } else {
             null
         }
-        val markdownProfile = prefs.getString("pref_markdown_profile", "gfm")
+        val markdownProfile = prefs.getString("pref_markdown_profile", "commonmark")
         val inheritedMarkdownSyntaxValue = when (key) {
             "pref_obsidian_highlight_enabled" -> markdownProfile == "obsidian"
             "pref_wmdx_color_syntax_enabled",

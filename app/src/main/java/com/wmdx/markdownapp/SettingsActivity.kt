@@ -117,9 +117,9 @@ open class BaseSettingsFragment : PreferenceFragmentCompat(), SharedPreferences.
 
     private fun applyMarkdownProfileDefaults(group: androidx.preference.PreferenceGroup) {
         val storedPreferences = PreferenceManager.getDefaultSharedPreferences(requireContext())
-        val profile = storedPreferences.getString("pref_markdown_profile", "gfm")
+        val profile = storedPreferences.getString("pref_markdown_profile", "commonmark")
             ?.takeIf { it in setOf("wmdx", "commonmark", "gfm", "obsidian") }
-            ?: "wmdx"
+            ?: "commonmark"
         val defaults = when (profile) {
             "commonmark" -> mapOf(
                 "pref_gfm_extensions_enabled" to false,
@@ -134,6 +134,8 @@ open class BaseSettingsFragment : PreferenceFragmentCompat(), SharedPreferences.
                 "pref_callout_syntax_enabled" to false,
                 "pref_callout_syntax_wmdx_enabled" to false,
                 "pref_callout_syntax_obsidian_enabled" to false,
+                "pref_footnote_syntax_enabled" to false,
+                "pref_footnote_syntax_markdown_enabled" to false,
                 "pref_footnote_syntax_wmdx_enabled" to false,
                 "pref_footnote_syntax_obsidian_inline_enabled" to false,
                 "pref_footnote_authoring_syntax" to "markdown",
@@ -156,6 +158,8 @@ open class BaseSettingsFragment : PreferenceFragmentCompat(), SharedPreferences.
                 "pref_callout_syntax_wmdx_enabled" to false,
                 "pref_callout_syntax_obsidian_enabled" to true,
                 "pref_callout_authoring_syntax" to "obsidian",
+                "pref_footnote_syntax_enabled" to true,
+                "pref_footnote_syntax_markdown_enabled" to true,
                 "pref_footnote_syntax_wmdx_enabled" to false,
                 "pref_footnote_syntax_obsidian_inline_enabled" to false,
                 "pref_footnote_authoring_syntax" to "markdown",
@@ -178,6 +182,8 @@ open class BaseSettingsFragment : PreferenceFragmentCompat(), SharedPreferences.
                 "pref_callout_syntax_wmdx_enabled" to false,
                 "pref_callout_syntax_obsidian_enabled" to true,
                 "pref_callout_authoring_syntax" to "obsidian",
+                "pref_footnote_syntax_enabled" to true,
+                "pref_footnote_syntax_markdown_enabled" to true,
                 "pref_footnote_syntax_wmdx_enabled" to false,
                 "pref_footnote_syntax_obsidian_inline_enabled" to true,
                 "pref_footnote_authoring_syntax" to "markdown",
@@ -201,6 +207,8 @@ open class BaseSettingsFragment : PreferenceFragmentCompat(), SharedPreferences.
                 "pref_callout_syntax_wmdx_enabled" to true,
                 "pref_callout_syntax_obsidian_enabled" to true,
                 "pref_callout_authoring_syntax" to "wmdx",
+                "pref_footnote_syntax_enabled" to true,
+                "pref_footnote_syntax_markdown_enabled" to true,
                 "pref_footnote_syntax_wmdx_enabled" to true,
                 "pref_footnote_syntax_obsidian_inline_enabled" to true,
                 "pref_footnote_authoring_syntax" to "wmdx",
@@ -4301,7 +4309,7 @@ class MarkdownDialectSettingsFragment : BaseSettingsFragment() {
         key: String
     ) {
         if (key != "pref_markdown_profile") return
-        val profile = sharedPreferences.getString("pref_markdown_profile", "gfm")
+        val profile = sharedPreferences.getString("pref_markdown_profile", "commonmark")
         for (preferenceKey in listOf(
             "pref_wmdx_color_syntax_enabled",
             "pref_obsidian_highlight_enabled",

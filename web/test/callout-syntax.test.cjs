@@ -1,11 +1,4 @@
-const assert = require('node:assert/strict');
-const fs = require('node:fs');
-const path = require('node:path');
-const test = require('node:test');
-
-const root = path.join(__dirname, '../..');
-
-test('callout syntax settings enable both flavors and default authoring to Wmdx', async () => {
+test('callout syntax defaults off for CommonMark and resolves enabled dialects', async () => {
   const {
     DEFAULT_CALLOUT_SYNTAX_SETTINGS,
     isCalloutFlavorEnabled,
@@ -15,8 +8,17 @@ test('callout syntax settings enable both flavors and default authoring to Wmdx'
   assert.deepEqual(normalizeCalloutSyntaxSettings(), {
     ...DEFAULT_CALLOUT_SYNTAX_SETTINGS
   });
+  assert.deepEqual(DEFAULT_CALLOUT_SYNTAX_SETTINGS, {
+    enabled: false,
+    wmdx: false,
+    obsidian: false,
+    authoringSyntax: null
+  });
   assert.deepEqual(
     normalizeCalloutSyntaxSettings({
+      pref_callout_syntax_enabled: true,
+      pref_callout_syntax_wmdx_enabled: true,
+      pref_callout_syntax_obsidian_enabled: true,
       pref_callout_authoring_syntax: 'obsidian'
     }),
     {
@@ -28,12 +30,16 @@ test('callout syntax settings enable both flavors and default authoring to Wmdx'
   );
   assert.equal(
     normalizeCalloutSyntaxSettings({
-      pref_callout_syntax_wmdx_enabled: false
+      pref_callout_syntax_enabled: true,
+      pref_callout_syntax_wmdx_enabled: false,
+      pref_callout_syntax_obsidian_enabled: true
     }).authoringSyntax,
     'obsidian'
   );
   assert.equal(
     normalizeCalloutSyntaxSettings({
+      pref_callout_syntax_enabled: true,
+      pref_callout_syntax_wmdx_enabled: true,
       pref_callout_syntax_obsidian_enabled: false,
       pref_callout_authoring_syntax: 'obsidian'
     }).authoringSyntax,
@@ -41,7 +47,9 @@ test('callout syntax settings enable both flavors and default authoring to Wmdx'
   );
 
   const disabled = normalizeCalloutSyntaxSettings({
-    pref_callout_syntax_enabled: false
+    pref_callout_syntax_enabled: false,
+    pref_callout_syntax_wmdx_enabled: true,
+    pref_callout_syntax_obsidian_enabled: true
   });
   assert.equal(isCalloutFlavorEnabled(disabled, 'wmdx'), false);
   assert.equal(isCalloutFlavorEnabled(disabled, 'obsidian'), false);

@@ -6,7 +6,7 @@
         app:key="pref_underline_use_wmdx_syntax"
         app:title="Use Wmdx syntax"
         app:summary="Use Wmdx underline markers instead of HTML underline"
-        app:defaultValue="true" />
+        app:defaultValue="false" />
 
     <com.wmdx.markdownapp.ExpandablePreference
         app:key="pref_underline_solid_section"
