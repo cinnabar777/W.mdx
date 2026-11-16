@@ -2118,20 +2118,33 @@ function htmlBlock(node, warnings, depth = 0, options = {}) {
   if (node.nodeType !== 1) return '';
   const tag = node.tagName.toLowerCase();
   if (node.hasAttribute('style') && !isGeneratedTocNode(node)) {
-    const styleProperties = (node.getAttribute('style') ?? '')
+    const style = node.getAttribute('style') ?? '';
+    const textJustifyValue =
+      /(?:^|;)\s*text-justify\s*:\s*(auto|none|inter-word|inter-character)\s*(?:;|$)/i
+        .exec(style)?.[1]?.toLowerCase() ?? '';
+    const canPreserveTextJustify = tag === 'div' &&
+      Boolean(htmlAlignment(node)) &&
+      node.children.length === 0 &&
+      Boolean(textJustifyValue);
+    const styleProperties = style
       .split(';')
       .map(declaration => declaration.split(':', 1)[0].trim().toLowerCase())
       .filter(Boolean);
-    const hasMappedDivAlignment = tag === 'div' &&
-      styleProperties.includes('text-align');
-    const unmappedProperties = hasMappedDivAlignment
-      ? styleProperties.filter(property => property !== 'text-align')
+    const hasMappedAlignmentContainer =
+      ['div', 'figure'].includes(tag) && Boolean(htmlAlignment(node));
+    const preservedProperties = new Set(
+      hasMappedAlignmentContainer
+        ? ['text-align', ...(canPreserveTextJustify ? ['text-justify'] : [])]
+        : []
+    );
+    const unmappedProperties = hasMappedAlignmentContainer
+      ? styleProperties.filter(property => !preservedProperties.has(property))
       : styleProperties;
     if (unmappedProperties.length) {
       addWarning(
         warnings,
-        hasMappedDivAlignment
-          ? `Additional inline CSS properties on an aligned div were not preserved: ${unmappedProperties.join(', ')}.`
+        hasMappedAlignmentContainer
+          ? `Additional inline CSS properties on aligned HTML content were not preserved: ${unmappedProperties.join(', ')}.`
           : `Unmapped inline CSS styling was ignored during HTML import (${unmappedProperties.join(', ')}).`
       );
     }
@@ -2425,7 +2438,16 @@ function htmlBlock(node, warnings, depth = 0, options = {}) {
     const image = node.querySelector('img');
     const caption = node.querySelector('figcaption')?.textContent?.trim();
     if (image) {
-      return htmlImageResource(image, warnings, caption, htmlAlignment(node));
+      const resource = htmlImageResource(image, warnings, caption, htmlAlignment(node));
+      if (/^<img\b/i.test(resource)) {
+        const alignment = htmlAlignment(node);
+        const style = alignment ? ` style="text-align: ${alignment};"` : '';
+        const safeCaption = caption
+          ? `<figcaption>${escapeHtml(caption)}</figcaption>`
+          : '';
+        return `<figure${style}>${resource}${safeCaption}</figure>`;
+      }
+      return resource;
     }
   }
   if (tag === 'audio' || tag === 'video') {
@@ -2439,6 +2461,13 @@ function htmlBlock(node, warnings, depth = 0, options = {}) {
       left: '<', center: '><', right: '>', justify: '<>'
     }[alignment];
     if (marker) {
+      const textJustifyValue =
+        /(?:^|;)\s*text-justify\s*:\s*(auto|none|inter-word|inter-character)\s*(?:;|$)/i
+          .exec(node.getAttribute('style') ?? '')?.[1]?.toLowerCase();
+      if (textJustifyValue && node.children.length === 0) {
+        return `<div style="text-align: ${alignment}; text-justify: ${textJustifyValue};">` +
+          `${escapeHtml(node.textContent ?? '')}</div>`;
+      }
       const blockChildTags = new Set([
         'blockquote', 'div', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
         'hr', 'ol', 'p', 'pre', 'table', 'ul'

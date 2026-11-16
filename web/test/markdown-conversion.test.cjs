@@ -682,6 +682,7 @@ test('HTML import converts semantic content and omits active elements', async ()
     '<div style="text-align:justify; text-justify:inter-word">Justified</div>' +
     '<figure style="text-align:center"><img src="images/photo.png" alt="Photo" width="120" height="60">' +
     '<figcaption>Caption</figcaption></figure>' +
+    '<figure><img src="wide.png" alt="Wide" width="100"></figure>' +
     '<a href="files/notes (1).pdf" download>PDF attachment</a>' +
     '<script>alert(1)</script>',
     Parser
@@ -693,11 +694,16 @@ test('HTML import converts semantic content and omits active elements', async ()
   assert.match(result.markdown, /- One\n  - Nested/);
   assert.match(result.markdown, /- \[x\] Done/);
   assert.match(result.markdown, /^><\nCentered$/m);
-  assert.match(result.markdown, /^<>\nJustified$/m);
-  assert.ok(result.warnings.some(warning =>
-    warning.includes('text-justify') && warning.includes('not preserved')
-  ));
+  assert.match(
+    result.markdown,
+    /^<div style="text-align: justify; text-justify: inter-word;">Justified<\/div>$/m
+  );
+  assert.ok(!result.warnings.some(warning => warning.includes('text-justify')));
   assert.match(result.markdown, /!\[images\/photo\.png\|Caption\|120x60\|><\]/);
+  assert.match(
+    result.markdown,
+    /<figure><img src="wide\.png" alt="Wide" width="100"><\/figure>/
+  );
   assert.match(
     result.markdown,
     /\[PDF attachment\]\(files\/notes%20\(1\)\.pdf "wmdx-attachment"\)/

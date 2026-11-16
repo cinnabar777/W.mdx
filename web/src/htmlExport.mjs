@@ -484,12 +484,13 @@ function annotateObsidianWikiLinks(document, markdown) {
         continue;
       }
       if (!codeTicks) {
-        const start = line[index] === '!' && line[index + 1] === '[' ? index : index;
+        const isEmbed = line[index] === '!' && line[index + 1] === '[';
+        const start = isEmbed ? index + 1 : index;
         if (line[start] === '[') {
           const end = line.indexOf(']', start + 1);
           if (end >= 0) {
             const resource = parseWmdxResourceSyntax(line.slice(start, end + 1));
-            if (resource && !resource.embed) {
+            if (!isEmbed && resource && !resource.embed) {
               resources.push({
                 source: resource.source,
                 title: resource.displayTitle
@@ -504,7 +505,11 @@ function annotateObsidianWikiLinks(document, markdown) {
     }
   }
 
-  const anchors = Array.from(document.querySelectorAll('a[href]'));
+  const anchors = Array.from(document.querySelectorAll('a[href]'))
+    .filter(anchor =>
+      anchor.getAttribute('title') !== 'wmdx-attachment' &&
+      anchor.getAttribute('data-wmdx-kind') !== 'attachment'
+    );
   const hrefKey = value => {
     try {
       return new URL(String(value ?? ''), 'https://wmdx.invalid/').href;

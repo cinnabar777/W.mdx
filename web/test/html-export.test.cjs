@@ -166,6 +166,28 @@ test('HTML export preserves safe embedded document attachments but rejects activ
   assert.equal(unsafe?.hasAttribute('href'), false);
 });
 
+test('Obsidian wiki-link annotation does not replace embedded attachment URLs', () => {
+  const dom = new JSDOM('');
+  const dataUri = 'data:application/pdf;base64,AQID';
+  const result = renderMarkdownHtml('![[Document.pdf]]', {
+    profile: 'obsidian',
+    window: dom.window,
+    resolveAssetDataUri: reference =>
+      reference === 'Document.pdf' ? dataUri : null
+  });
+  const document = new dom.window.DOMParser().parseFromString(result.html, 'text/html');
+  const attachment = document.querySelector('a');
+
+  assert.equal(attachment?.getAttribute('href'), dataUri);
+  assert.equal(attachment?.getAttribute('title'), 'wmdx-attachment');
+  assert.notEqual(attachment?.getAttribute('data-wmdx-kind'), 'wikilink');
+  const imported = convertFromHtml(result.html, dom.window.DOMParser);
+  assert.match(
+    imported.markdown,
+    /\(data:application\/pdf;base64,AQID "wmdx-attachment"\)/
+  );
+});
+
 test('HTML export preserves Obsidian open links without allowing arbitrary app schemes', () => {
   const { dom, result } = render(
     '[Note](obsidian://open?vault=MainVault&file=Note.md)\n\n' +
