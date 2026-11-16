@@ -2734,7 +2734,7 @@ function importCommonMarkReferenceHtml(body, Parser, warnings, footnoteDefinitio
   const blockOptions = { unorderedListMarkerState, preserveCodeBlockText: true };
   const leadingNbspMarkers = new Map();
   const inlineCodeMarkers = new Map();
-  const softBreakMarker = String.fromCharCode(0xE002) + 'WMDX_SOFT_BREAK' + String.fromCharCode(0xE003);
+  let softBreakMarker = String.fromCharCode(0xE002) + 'WMDX_SOFT_BREAK' + String.fromCharCode(0xE003);
   while (body.textContent?.includes(softBreakMarker)) softBreakMarker += String.fromCharCode(0xE105);
   const leadingNbspCharacter = String.fromCharCode(0x00A0);
   const blockStartTags = new Set([
