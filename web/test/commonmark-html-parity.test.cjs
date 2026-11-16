@@ -140,7 +140,8 @@ test('CommonMark 0.31.2 core Markdown exports to reference-equivalent HTML', asy
           canonicalizeRenderedHtml(result.html, template),
           canonicalizeRenderedHtml(expectedHtml, template),
           'HTML export differs from CommonMark reference output; warnings: ' +
-            JSON.stringify(result.warnings)
+            JSON.stringify(result.warnings) + '; source Markdown: ' +
+            JSON.stringify(example.markdown)
         );
       }
     );
@@ -170,7 +171,9 @@ test('Reference-rendered CommonMark HTML imports without semantic loss', async t
             JSON.stringify(imported.warnings) + '; export warnings: ' +
             JSON.stringify(exported.warnings) + '; imported Markdown: ' +
             JSON.stringify(imported.markdown) + '; exported Markdown: ' +
-            JSON.stringify(exported.markdown)
+            JSON.stringify(exported.markdown) + '; source Markdown: ' +
+            JSON.stringify(example.markdown) + '; reference HTML: ' +
+            JSON.stringify(expectedHtml)
         );
       }
     );
