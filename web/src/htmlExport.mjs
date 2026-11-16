@@ -480,9 +480,7 @@ function isSafeObsidianOpenUri(value) {
 }
 
 function normalizeProfileSource(source, profile) {
-  if (profile === 'wmdx' || profile === 'commonmark') {
-    return { markdown: String(source ?? ''), warnings: [] };
-  }
+  if (profile === 'wmdx') return { markdown: String(source ?? ''), warnings: [] };
   return convertFromMarkdown(source, profile, { DOMParser: null });
 }
 
@@ -572,6 +570,7 @@ function annotateObsidianWikiLinks(document, markdown) {
  */
 export function renderMarkdownHtml(source, {
   profile = 'wmdx',
+  sourceDialect = 'wmdx',
   window = globalThis.window,
   resolveAssetDataUri = null,
   footnoteSyntaxSettings = {}
@@ -582,10 +581,17 @@ export function renderMarkdownHtml(source, {
   const normalizedProfile = ['wmdx', 'commonmark', 'gfm', 'obsidian'].includes(profile)
     ? profile
     : 'wmdx';
-  const footnotes = normalizedProfile === 'commonmark'
+  const normalizedSourceDialect = ['wmdx', 'commonmark', 'gfm', 'obsidian'].includes(sourceDialect)
+    ? sourceDialect
+    : 'wmdx';
+  const sameNonWmdxDialect = normalizedSourceDialect === normalizedProfile &&
+    normalizedSourceDialect !== 'wmdx';
+  const footnotes = normalizedSourceDialect === 'commonmark'
     ? { markdown: String(source ?? ''), references: [], rows: [] }
     : extractFootnotes(String(source ?? ''), footnoteSyntaxSettings);
-  const normalized = normalizeProfileSource(footnotes.markdown, normalizedProfile);
+  const normalized = sameNonWmdxDialect
+    ? { markdown: footnotes.markdown, warnings: [] }
+    : normalizeProfileSource(footnotes.markdown, normalizedSourceDialect);
   const footnoteBodyWarnings = [];
   const normalizedFootnoteRows = footnotes.rows.map(row => {
     if (normalizedProfile === 'wmdx') return row;
@@ -594,7 +600,7 @@ export function renderMarkdownHtml(source, {
     return { ...row, body: convertedBody.markdown };
   });
   const targetDialect = normalizedProfile === 'commonmark' ? 'commonmark' : 'gfm';
-  const exported = normalizedProfile === 'commonmark'
+  const exported = sameNonWmdxDialect
     ? { markdown: normalized.markdown, warnings: [] }
     : exportMarkdown(normalized.markdown, targetDialect);
   const markdownWarnings = [...normalized.warnings, ...exported.warnings]
