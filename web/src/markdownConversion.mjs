@@ -2322,10 +2322,19 @@ function htmlBlock(node, warnings, depth = 0, options = {}) {
           ? orderedMarker.replace(/[.)]$/, orderedDelimiter)
           : unorderedMarker;
         const task = checkbox ? `[${checkbox.checked ? 'x' : ' '}] ` : '';
+        const itemIndent = ' '.repeat(options.listIndent ?? 0);
+        const continuationIndent = ' '.repeat(
+          itemIndent.length + marker.length + 1
+        );
         const bodyBlocks = [];
         let inlineBody = '';
         let hasBlockContent = false;
         let inlineNodes = [];
+        const appendBlock = value => {
+          if (!value?.trim()) return;
+          bodyBlocks.push(value);
+          hasBlockContent = true;
+        };
         const flushInlineNodes = () => {
           if (!inlineNodes.length) return;
           const value = inlineNodes
@@ -2338,14 +2347,21 @@ function htmlBlock(node, warnings, depth = 0, options = {}) {
           inlineNodes = [];
           if (!value) return;
           if (!hasBlockContent && !inlineBody) inlineBody = value;
-          else bodyBlocks.push(value);
+          else appendBlock(value);
         };
         for (const child of Array.from(item.childNodes)) {
-          if (child.nodeType === 1 &&
-              ['input', 'ul', 'ol'].includes(child.tagName.toLowerCase())) {
+          const childTag = child.nodeType === 1 ? child.tagName.toLowerCase() : '';
+          if (childTag === 'input') continue;
+          if (childTag === 'ul' || childTag === 'ol') {
+            flushInlineNodes();
+            const value = htmlBlock(child, warnings, depth + 1, {
+              ...options,
+              escapeBlockSyntax: true,
+              listIndent: 0
+            });
+            appendBlock(value);
             continue;
           }
-          const childTag = child.nodeType === 1 ? child.tagName.toLowerCase() : '';
           if (childTag === 'p' && !child.hasAttribute('style') && !child.hasAttribute('align')) {
             flushInlineNodes();
             const value = Array.from(child.childNodes)
@@ -2357,10 +2373,7 @@ function htmlBlock(node, warnings, depth = 0, options = {}) {
               .trim();
             if (value) {
               if (!hasBlockContent && !inlineBody) inlineBody = value;
-              else {
-                bodyBlocks.push(value);
-                hasBlockContent = true;
-              }
+              else appendBlock(value);
             }
             continue;
           }
@@ -2374,25 +2387,9 @@ function htmlBlock(node, warnings, depth = 0, options = {}) {
             ...options,
             escapeBlockSyntax: true
           });
-          if (value.trim()) {
-            bodyBlocks.push(value);
-            hasBlockContent = true;
-          }
+          appendBlock(value);
         }
         flushInlineNodes();
-        const itemIndent = ' '.repeat(options.listIndent ?? 0);
-        const continuationIndent = ' '.repeat(
-          itemIndent.length + marker.length + 1
-        );
-        const nested = Array.from(item.children)
-          .filter(child => ['ul', 'ol'].includes(child.tagName.toLowerCase()))
-          .map(child => htmlBlock(child, warnings, depth + 1, {
-            ...options,
-            escapeBlockSyntax: true,
-            listIndent: continuationIndent.length
-          }))
-          .filter(Boolean)
-          .join('\n');
         const itemContent = task + inlineBody;
         const prefix = `${itemIndent}${marker}${itemContent ? ` ${itemContent}` : ''}`;
         const bodySeparator = looseList ? '\n\n' : '\n';
@@ -2403,8 +2400,7 @@ function htmlBlock(node, warnings, depth = 0, options = {}) {
           .join(bodySeparator);
         const inlineBlockSeparator = inlineBody && looseList ? '\n\n' : '\n';
         const output = prefix +
-          (continuation ? inlineBlockSeparator + continuation : '') +
-          (nested ? `\n${nested}` : '');
+          (continuation ? inlineBlockSeparator + continuation : '');
         nextOrdinal = itemOrdinal + 1;
         return output;
       })
@@ -2736,6 +2732,7 @@ function importCommonMarkReferenceHtml(body, Parser, warnings, footnoteDefinitio
   const blockOptions = { unorderedListMarkerState, preserveCodeBlockText: true };
   const leadingNbspMarkers = new Map();
   const leadingTabMarkers = new Map();
+  const literalBlockStartMarkers = new Map();
   const inlineCodeMarkers = new Map();
   let softBreakMarker = String.fromCharCode(0xE002) + 'WMDX_SOFT_BREAK' + String.fromCharCode(0xE003);
   while (body.textContent?.includes(softBreakMarker)) softBreakMarker += String.fromCharCode(0xE105);
@@ -2799,6 +2796,20 @@ function importCommonMarkReferenceHtml(body, Parser, warnings, footnoteDefinitio
       return marker;
     });
   };
+  let blockStartMarkerIndex = 0;
+  const protectBlockStartsAfterBreak = value => value.replace(
+    /(\r?\n)( {0,3})(?=(?:#{1,6}(?:[ \t]|$)|>(?:[ \t]|$)|[-+*](?:[ \t]|$)|\d{1,9}[.)](?=[ \t])|\[[^\]\n]+\]:|[-*_]{3,}[ \t]*$|={1,}[ \t]*$))/gm,
+    (_, newline, indent) => {
+      let marker = String.fromCharCode(0xE10B) +
+        'WMDX_LITERAL_BLOCK_START_' + (++blockStartMarkerIndex) +
+        String.fromCharCode(0xE10C);
+      while (body.textContent?.includes(marker) || literalBlockStartMarkers.has(marker)) {
+        marker += String.fromCharCode(0xE10D);
+      }
+      literalBlockStartMarkers.set(marker, String.fromCharCode(92));
+      return newline + indent + marker;
+    }
+  );
   let inlineCodeIndex = 0;
   for (const code of Array.from(body.querySelectorAll('code'))) {
     if (code.closest('pre')) continue;
@@ -2808,6 +2819,16 @@ function importCommonMarkReferenceHtml(body, Parser, warnings, footnoteDefinitio
     while (body.textContent?.includes(marker)) marker += String.fromCharCode(0xE104);
     inlineCodeMarkers.set(marker, formatMarkdownCodeSpan(code.textContent ?? ''));
     code.replaceWith(body.ownerDocument.createTextNode(marker));
+  }
+  for (const anchor of Array.from(body.querySelectorAll('a'))) {
+    protectAdjacentLiteralBackticks(anchor.previousSibling);
+    protectAdjacentLiteralBackticks(anchor.nextSibling);
+    const anchorWalker = body.ownerDocument.createTreeWalker(anchor, 4);
+    let anchorText = anchorWalker.nextNode();
+    while (anchorText) {
+      protectAdjacentLiteralBackticks(anchorText);
+      anchorText = anchorWalker.nextNode();
+    }
   }
   for (const lineBreak of body.querySelectorAll('br')) {
     const next = lineBreak.nextSibling;
@@ -2854,7 +2875,11 @@ function importCommonMarkReferenceHtml(body, Parser, warnings, footnoteDefinitio
           value = value.replace(/[ \t]*(?:\r?\n)+[ \t]*$/, '');
         }
         value = value.replace(/[ \t]*\r?\n(?:[ \t]*\r?\n)+[ \t]*/g, ' ');
-        textNode.nodeValue = value.replace(/\r?\n/g, softBreakMarker);
+        const insideBlockquote = Boolean(textNode.parentElement?.closest('blockquote'));
+        if (!insideBlockquote) value = protectBlockStartsAfterBreak(value);
+        textNode.nodeValue = insideBlockquote
+          ? value
+          : value.replace(/\r?\n/g, softBreakMarker);
       }
     }
     textNode = textWalker.nextNode();
@@ -2869,6 +2894,10 @@ function importCommonMarkReferenceHtml(body, Parser, warnings, footnoteDefinitio
     blankReplacement: (_, node) => {
       if (node.nodeType !== 1) return '\n\n';
       const tag = node.tagName.toLowerCase();
+      if ((tag === 'blockquote' || /^h[1-6]$/.test(tag)) &&
+          !node.textContent.trim() && !node.querySelector('*')) {
+        return '\n\n<' + tag + '></' + tag + '>\n\n';
+      }
       const preserveBlankNode = tag === 'pre' ||
         tag === 'ul' || tag === 'ol' ||
         (tag === 'blockquote' && node.querySelector('pre, ul, ol, hr, table')) ||
@@ -3058,6 +3087,9 @@ function importCommonMarkReferenceHtml(body, Parser, warnings, footnoteDefinitio
     markdownSource = markdownSource.split(marker).join(replacement);
   }
   for (const [marker, replacement] of leadingNbspMarkers) {
+    markdownSource = markdownSource.split(marker).join(replacement);
+  }
+  for (const [marker, replacement] of literalBlockStartMarkers) {
     markdownSource = markdownSource.split(marker).join(replacement);
   }
   markdownSource = markdownSource.split(softBreakMarker).join('\n');

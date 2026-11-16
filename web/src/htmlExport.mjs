@@ -694,7 +694,7 @@ export function renderMarkdownHtml(source, {
   });
   let html = purifier.sanitize(parsed.body.innerHTML, {
     USE_PROFILES: { html: true },
-    ALLOWED_URI_REGEXP: /^(?:(?:(?:f|ht)tps?|mailto|tel|callto|sms|cid|xmpp|matrix):|obsidian:\/\/open(?:[/?#]|$)|[a-z][a-z0-9+.-]*:|[^a-z]|[a-z+.-]+(?:[^a-z+.-:]|$))/i,
+    ALLOWED_URI_REGEXP: /^(?:(?:(?:f|ht)tps?|mailto|tel|callto|sms|cid|xmpp|matrix):|obsidian:\/\/open(?:[/?#]|$)|[a-z][a-z0-9+.-]*:|[^a-z]|[a-z+.-]+(?:[^a-z+.:\\-]|$))/i,
     ADD_TAGS: ['audio', 'video', 'source', 'track', 'figure', 'figcaption', 'mark', 'details', 'summary'],
     ADD_ATTR: [
       'controls', 'preload', 'poster', 'width', 'height', 'download',
