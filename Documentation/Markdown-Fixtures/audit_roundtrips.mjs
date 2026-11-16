@@ -355,9 +355,13 @@ for (const [name, entry, sourceProfile] of fixtures) {
   if (!showAll && !selected.has(name)) continue;
   const original = fs.readFileSync(path.join(root, name, entry), 'utf8');
   for (const targetProfile of profiles.filter(profile => profile !== sourceProfile)) {
-    const imported = convertFromMarkdown(original, sourceProfile);
+    const imported = convertFromMarkdown(original, sourceProfile, {
+      DOMParser: dom.window.DOMParser
+    });
     const exported = exportMarkdown(imported.markdown, targetProfile);
-    const reimported = convertFromMarkdown(exported.markdown, targetProfile);
+    const reimported = convertFromMarkdown(exported.markdown, targetProfile, {
+      DOMParser: dom.window.DOMParser
+    });
     const returned = exportMarkdown(reimported.markdown, sourceProfile);
     const comparison = lineDiff(original, returned.markdown);
     const changedOperations = comparison.operations.filter(op => op.type !== ' ').length;
@@ -372,6 +376,11 @@ for (const [name, entry, sourceProfile] of fixtures) {
     const beforeMeaning = canonicalizeHtml(beforeHtml.html);
     const afterMeaning = canonicalizeHtml(afterHtml.html);
     const meaningMatches = JSON.stringify(beforeMeaning) === JSON.stringify(afterMeaning);
+    const beforeCounts = structureCounts(beforeHtml.html);
+    const afterCounts = structureCounts(afterHtml.html);
+    const structuralChanges = Object.entries(beforeCounts)
+      .filter(([element, count]) => count !== afterCounts[element])
+      .map(([element, count]) => `${element} ${count}→${afterCounts[element]}`);
 
     console.log(`\n## ${name}: ${sourceProfile} → ${targetProfile} → ${sourceProfile}`);
     console.log(
@@ -387,6 +396,9 @@ for (const [name, entry, sourceProfile] of fixtures) {
       ['returned HTML render', afterHtml]
     ]);
     console.log(`Rendered HTML meaning: ${meaningMatches ? 'same' : 'DIFFERENT'}.`);
+    console.log(structuralChanges.length
+      ? `Structural count changes: ${structuralChanges.join(', ')}.`
+      : 'Structural counts match for the tracked element types.');
     if (!meaningMatches) {
       const differences = collectDifferences(beforeMeaning, afterMeaning);
       console.log(

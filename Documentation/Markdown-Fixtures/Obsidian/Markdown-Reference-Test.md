@@ -2,45 +2,45 @@
 
 ## MARKDOWN QR
 
-1. Bold: ** or __ [[#BOLD|Link]]
-2. Code: ` [[#CODE|Link]]
-3. Embed: ![[]] [[#EMBED|Link]]
-4. Escape: \
-5. Footnote: ^[] [[#Footnotes|Link]]
-6. Headings: # [[#HEADINGS|Link]]
-7. Highlight: == [[#TEXT HIGHLIGHT|Link]]
-8. Horizontal line: 3+ of _ * -
-9. Image: ![]() [[#LINK IMAGES|Link]]
-10. Italic: * or _ [[#ITALICS|Link]]
-11. Links: []() [[#LINKS|Link]]
-12. Numbered list: 1. [[#ORDERED LISTS|Link]]
-13. Quote (block): > [[#BLOCK QUOTE|Link]]
-14. Strikethrough: ~~ [[#STRIKETHROUGH|Link]]
+1. Bold: `**` or `__` [[#BOLD|Link]]
+2. Code: `` ` `` [[#CODE|Link]]
+3. Embed: `![[]]` [[#EMBED|Link]]
+4. Escape: `\`
+5. Footnote: `^[]` [[#Footnotes|Link]]
+6. Headings: `#` [[#HEADINGS|Link]]
+7. Highlight: `==` [[#TEXT HIGHLIGHT|Link]]
+8. Horizontal line: `___`, `***`, or `---`
+9. Image: `![]()` [[#LINK IMAGES|Link]]
+10. Italic: `*` or `_` [[#ITALICS|Link]]
+11. Links: `[]()` [[#LINKS|Link]]
+12. Numbered list: `1.` [[#ORDERED LISTS|Link]]
+13. Quote (block): `>` [[#BLOCK QUOTE|Link]]
+14. Strikethrough: `~~` [[#STRIKETHROUGH|Link]]
 15. Tables: [[#TABLES|Link]]
-16. Tags: # [[#TAGS|Link]]
-17. Tasks & Checkbox: - [ ] [[#Checklist|Link]]
-18. Unordered lists: - + * [[#UNORDERED LISTS|Link]]
-19. Underline; <u></u> → [[#UNDERLINE |Link]]
+16. Tags: `#` [[#TAGS|Link]]
+17. Tasks & Checkbox: `- [ ]` [[#Checklist|Link]]
+18. Unordered lists: `-`, `+`, or `*` [[#UNORDERED LISTS|Link]]
+19. Underline: `<u></u>` → [[#UNDERLINE |Link]]
 
 ## MARKDOWN SHORTCUTS
 
-1. mdcal: > [!NOTE] Title
-2. mdcheck: - [ ]
-3. mdalign: <div align="">
-4. mdcode: ```
-5. mdcolor: <span style="color: lime; font-weight: bold;">
-6. mdive: </div>
-7. mdembed: ![[
-8. mdlink: [[
-9. mdq: >
-10. mdspane: </span>
-11. mdstrike: ~~
-12. mdsub: $_{
-13. mdsup: $^{
-14. mdsue: }$
-15. mdu: <u>
-16. mdue: </u>
-17. mdyellow: <span style="color: black; font-weight: bold; background-color: yellow;">
+1. mdcal: `> [!NOTE] Title`
+2. mdcheck: `- [ ]`
+3. mdalign: `<div align="">`
+4. mdcode: ```` ``` ````
+5. mdcolor: `<span style="color: lime; font-weight: bold;">`
+6. mdive: `</div>`
+7. mdembed: `![[`
+8. mdlink: `[[`
+9. mdq: `>`
+10. mdspane: `</span>`
+11. mdstrike: `~~`
+12. mdsub: `$_{`
+13. mdsup: `$^{`
+14. mdsue: `}$`
+15. mdu: `<u>`
+16. mdue: `</u>`
+17. mdyellow: `<span style="color: black; font-weight: bold; background-color: yellow;">`
 
 ---
 
@@ -54,12 +54,12 @@ In addition, Obsidian adds the following syntax:
 
 | **Syntax**        | **Description**                 |
 | ----------------- | ------------------------------- |
-| [[File name]]   | Internal link to file           |
-| [[#Header]]     | Internal link to header         |
-| [[File#Header]] | link to header in internal file |
-| ![[File]]       | Embedding files                 |
-| %%. . .%%         | Comments                        |
-| > [!note]        | Callouts                        |
+| `[[File name]]`   | Internal link to file           |
+| `[[#Header]]`     | Internal link to header         |
+| `[[File#Header]]` | link to header in internal file |
+| `![[File]]`       | Embedding files                 |
+| `%%. . .%%`       | Comments                        |
+| `> [!note]`       | Callouts                        |
 
 ---
 
@@ -67,8 +67,8 @@ In addition, Obsidian adds the following syntax:
 
 **METHODS**
 
-1. Three tildes on the first and last line of the code block: ~~~
-2. Three backticks on the first and last line of the code block: ```
+1. Three tildes on the first and last line of the code block: `~~~`
+2. Three backticks on the first and last line of the code block: ```` ``` ````
 3. Four spaces (not optimal)
 
 **EXAMPLES:**

@@ -972,6 +972,11 @@ function convertHeadings(source, protectedLines = new Set()) {
       replacements.push({
         from: node.from,
         to: node.to,
+        endLine: state.doc.lineAt(Math.max(node.from, node.to - 1)).number - 1,
+        removedLineCount: Math.max(
+          0,
+          state.doc.lineAt(Math.max(node.from, node.to - 1)).number - line.number
+        ),
         text: `.${setext[1]} ${title}`
       });
     },
@@ -985,6 +990,19 @@ function convertHeadings(source, protectedLines = new Set()) {
     output = output.slice(0, replacement.from) +
       replacement.text +
       output.slice(replacement.to);
+  }
+  if (protectedLines.size && replacements.some(item => item.removedLineCount > 0)) {
+    const remapped = [...protectedLines].map(lineIndex => {
+      const removedBefore = replacements.reduce(
+        (total, item) => total + (
+          item.endLine < lineIndex ? item.removedLineCount : 0
+        ),
+        0
+      );
+      return lineIndex - removedBefore;
+    });
+    protectedLines.clear();
+    for (const lineIndex of remapped) protectedLines.add(lineIndex);
   }
   return output.split('\n');
 }
@@ -1174,6 +1192,19 @@ function containsMarkdownInlineSyntax(text) {
   );
 }
 
+function htmlContainerBalance(source, tagName) {
+  let balance = 0;
+  const tagPattern = new RegExp(`<\\/?${tagName}\\b[^>]*>`, 'gi');
+  for (const match of String(source ?? '').matchAll(tagPattern)) {
+    if (/^<\s*\//.test(match[0])) {
+      balance -= 1;
+    } else if (!/\/\s*>$/.test(match[0])) {
+      balance += 1;
+    }
+  }
+  return balance;
+}
+
 function protectTopLevelMarkdownHtmlBlocks(source, format, Parser, warnings) {
   if (!Parser) return { source, restore: text => text };
   const tokens = marked.lexer(source, { gfm: format !== 'commonmark' });
@@ -1197,6 +1228,31 @@ function protectTopLevelMarkdownHtmlBlocks(source, format, Parser, warnings) {
       ) {
         tokenIndex += 1;
         raw += String(tokens[tokenIndex].raw ?? '');
+      }
+    }
+    if (
+      token.type === 'html' &&
+      token.block === true &&
+      /^\s*<details\b/i.test(raw) &&
+      htmlContainerBalance(raw, 'details') > 0
+    ) {
+      let balance = htmlContainerBalance(raw, 'details');
+      let grouped = raw;
+      let endTokenIndex = tokenIndex;
+      for (let next = tokenIndex + 1; next < tokens.length; next += 1) {
+        const candidate = tokens[next];
+        grouped += String(candidate.raw ?? '');
+        if (candidate.type === 'html' && candidate.block === true) {
+          balance += htmlContainerBalance(candidate.raw, 'details');
+        }
+        if (balance <= 0) {
+          endTokenIndex = next;
+          break;
+        }
+      }
+      if (endTokenIndex > tokenIndex) {
+        raw = grouped;
+        tokenIndex = endTokenIndex;
       }
     }
     const from = source.indexOf(raw, cursor);
@@ -2755,6 +2811,7 @@ function convertWmdxResourceToMarkdown(raw, dialect, warnings) {
 
 function convertWmdxCallouts(lines, dialect, warnings, protectedLines) {
   const output = [...lines];
+  const detailsIndexes = [];
   const openerPattern = /^([ \t]*)±([A-Za-z](?:[A-Za-z0-9_-]*[A-Za-z0-9])?)([+-]?)(?:[ \t]+(.*))?$/;
   const emphasizeTitle = value => {
     const title = String(value ?? '').trim();
@@ -2797,6 +2854,7 @@ function convertWmdxCallouts(lines, dialect, warnings, protectedLines) {
       });
       output[index] = `<details${state === '+' ? ' open' : ''}>\n` +
         `<summary>${summary}</summary>\n${content.trim()}\n</details>`;
+      detailsIndexes.push(index);
       for (let row = index + 1; row < end; row += 1) output[row] = '';
     } else if (dialect === 'obsidian') {
       const opener = `> [!${type}]${state}${title ? ` ${title}` : ''}`;
@@ -2826,6 +2884,28 @@ function convertWmdxCallouts(lines, dialect, warnings, protectedLines) {
       addWarning(warnings, 'Wmdx callout type, styling, and fold state were exported as a standard block quote.');
     }
     index = end - 1;
+  }
+  if (detailsIndexes.length) {
+    const removedRows = new Set();
+    for (const detailsIndex of detailsIndexes) {
+      let row = detailsIndex + 1;
+      while (row < output.length && !output[row].trim()) row += 1;
+      for (let blank = detailsIndex + 2; blank < row; blank += 1) {
+        removedRows.add(blank);
+      }
+    }
+    if (removedRows.size) {
+      const compacted = [];
+      const remappedProtectedLines = new Set();
+      for (let index = 0; index < output.length; index += 1) {
+        if (removedRows.has(index)) continue;
+        if (protectedLines.has(index)) remappedProtectedLines.add(compacted.length);
+        compacted.push(output[index]);
+      }
+      protectedLines.clear();
+      for (const index of remappedProtectedLines) protectedLines.add(index);
+      return compacted;
+    }
   }
   return output;
 }

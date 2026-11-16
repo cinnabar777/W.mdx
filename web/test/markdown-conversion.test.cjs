@@ -197,6 +197,75 @@ test('top-level raw HTML blocks in Markdown use semantic HTML import without tou
   assert.ok(activeBlock.warnings.some(warning => warning.includes('Active HTML element <script>')));
 });
 
+test('details HTML keeps its body and block spacing through dialect round-trips', async () => {
+  const { convertFromMarkdown, exportMarkdown } =
+    await import('../src/markdownConversion.mjs');
+  const { JSDOM } = require('jsdom');
+  const DOMParser = new JSDOM('').window.DOMParser;
+  const source = [
+    '<details>',
+    '<summary>Expandable details test</summary>',
+    '',
+    'This content is inside a native HTML details element.',
+    '',
+    '</details>',
+    '',
+    'After.',
+    '',
+    '```math',
+    '\\sum_{k=1}^{n} b_k^2',
+    '```'
+  ].join('\n');
+  const mathFence = ['```math', '\\sum_{k=1}^{n} b_k^2', '```'].join('\n');
+
+  const imported = convertFromMarkdown(source, 'commonmark', { DOMParser });
+  assert.match(imported.markdown, /±dropdown- Expandable details test/);
+  assert.match(imported.markdown, /This content is inside a native HTML details element\./);
+  assert.doesNotMatch(imported.markdown, /<\/details>/);
+
+  for (const dialect of ['commonmark', 'gfm', 'obsidian']) {
+    const exported = exportMarkdown(imported.markdown, dialect);
+    assert.match(exported.markdown, /<summary>Expandable details test<\/summary>/, dialect);
+    assert.match(
+      exported.markdown,
+      /<p>This content is inside a native HTML details element\.<\/p>/,
+      dialect
+    );
+    assert.match(exported.markdown, /<\/details>\n\nAfter\./, dialect);
+    const reimported = convertFromMarkdown(exported.markdown, dialect, { DOMParser });
+    assert.match(reimported.markdown, /This content is inside a native HTML details element\./, dialect);
+    assert.doesNotMatch(reimported.markdown, /<\/details>/, dialect);
+    assert.ok(reimported.markdown.includes(mathFence), dialect);
+  }
+});
+
+test('Setext heading conversion keeps later fenced code protected', async () => {
+  const { convertFromMarkdown, exportMarkdown } =
+    await import('../src/markdownConversion.mjs');
+  const source = [
+    'First section',
+    '-------------',
+    '',
+    'Second section',
+    '--------------',
+    '',
+    '```math',
+    '\\sum_{k=1}^{n} b_k^2',
+    '```'
+  ].join('\n');
+
+  const imported = convertFromMarkdown(source, 'commonmark');
+  const expectedFence = ['```math', '\\sum_{k=1}^{n} b_k^2', '```'].join('\n');
+  assert.ok(imported.markdown.includes(expectedFence));
+
+  for (const dialect of ['commonmark', 'gfm', 'obsidian']) {
+    const exported = exportMarkdown(imported.markdown, dialect);
+    const reimported = convertFromMarkdown(exported.markdown, dialect);
+    assert.ok(reimported.markdown.includes(expectedFence), dialect);
+    assert.doesNotMatch(reimported.markdown, /<sup>|\\\^\{n\}/, dialect);
+  }
+});
+
 test('superscript imports and exports through semantic HTML without reinterpreting literals', async () => {
   const { convertFromMarkdown, convertFromHtml, exportMarkdown } =
     await import('../src/markdownConversion.mjs');
