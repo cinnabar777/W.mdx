@@ -1081,6 +1081,20 @@ function convertInlineHtmlToMarkdown(line, warnings, Parser) {
   return text;
 }
 
+function containsMarkdownInlineSyntax(text) {
+  const syntaxPatterns = [
+    /\*\*?[^*\n]+\*\*?/,
+    /__?[^_\n]+__?/,
+    /~~[^~\n]+~~/,
+    /==[^=\n]+==/,
+    /`+[^`\n]+`+/,
+    /\[[^\]\n]+\]\([^)]+\)/
+  ];
+  return String(text ?? '').split(/\r?\n/).some(line =>
+    syntaxPatterns.some(pattern => pattern.test(line))
+  );
+}
+
 function protectTopLevelMarkdownHtmlBlocks(source, format, Parser, warnings) {
   if (!Parser) return { source, restore: text => text };
   const tokens = marked.lexer(source, { gfm: format !== 'commonmark' });
@@ -1111,7 +1125,8 @@ function protectTopLevelMarkdownHtmlBlocks(source, format, Parser, warnings) {
     chunks.push(source.slice(cursor, from));
     let replacement = raw;
     if (token.type === 'html' && token.block === true) {
-      const document = /^\s*<(?:a|table)\b/i.test(raw)
+      const needsTextInspection = /[*_~=`]/.test(raw);
+      const document = /^\s*<(?:a|table)\b/i.test(raw) || needsTextInspection
         ? new Parser().parseFromString(raw, 'text/html')
         : null;
       const anchor = document?.body?.querySelector('a[href]');
@@ -1129,7 +1144,13 @@ function protectTopLevelMarkdownHtmlBlocks(source, format, Parser, warnings) {
         table &&
         !table.querySelector('thead, th')
       );
-      if (standaloneHeaderlessTable) {
+      const hasActiveElement = /<\s*(script|style|iframe|object|embed|form)\b/i.test(raw);
+      const containsMarkdownTextSyntax = Boolean(
+        document &&
+        !hasActiveElement &&
+        containsMarkdownInlineSyntax(document.body?.textContent)
+      );
+      if (standaloneHeaderlessTable || containsMarkdownTextSyntax) {
         let marker;
         do {
           marker = `\uE020MDXHTMLBLOCK${markerIndex++}\uE021`;
@@ -1196,6 +1217,7 @@ const RAW_HTML_BLOCK_TAGS = new Set([
   'hr', 'html', 'iframe', 'legend', 'li', 'link', 'main', 'menu', 'menuitem',
   'nav', 'noframes', 'ol', 'optgroup', 'option', 'p', 'param', 'search',
   'pre', 'script', 'section', 'style', 'summary', 'table', 'tbody', 'td',
+  'textarea',
   'tfoot', 'th', 'thead', 'title', 'tr', 'track', 'ul'
 ]);
 const RAW_HTML_BLOCK_START = new RegExp(
@@ -1226,6 +1248,13 @@ function isRawHtmlBlockLine(line, state) {
     }
   }
   return true;
+}
+
+function protectRawHtmlBlockLines(lines, protectedLines) {
+  const state = { tags: [], comment: false };
+  for (let index = 0; index < lines.length; index += 1) {
+    if (isRawHtmlBlockLine(lines[index], state)) protectedLines.add(index);
+  }
 }
 
 function normalizeCommonMarkReferenceLabel(value) {
@@ -2824,6 +2853,7 @@ export function exportMarkdown(source, dialect = 'commonmark') {
   }
   const markdown = protectCodeFences(source, (originalLines, protectedLines) => {
     protectRawHtmlTableLines(originalLines, protectedLines);
+    protectRawHtmlBlockLines(originalLines, protectedLines);
     if (
       dialect === 'commonmark' &&
       originalLines.some((line, index) =>
