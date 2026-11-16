@@ -2701,13 +2701,19 @@ function isCommonMarkReferenceHtml(body) {
 function importCommonMarkReferenceHtml(body, Parser, warnings, footnoteDefinitions) {
   const unorderedListMarkerState = { lastByIndent: new Map() };
   const orderedListDelimiters = new WeakMap();
+  const blockOptions = { unorderedListMarkerState, preserveCodeBlockText: true };
   const converter = new TurndownService({
     headingStyle: 'atx',
     codeBlockStyle: 'fenced',
     bulletListMarker: '-',
     emDelimiter: '*',
     strongDelimiter: '**',
-    hr: '---'
+    hr: '---',
+    blankReplacement: (_, node) => {
+      if (node.nodeType !== 1) return '\n\n';
+      const markdown = htmlBlock(node, warnings, 0, blockOptions);
+      return markdown ? '\n\n' + markdown + '\n\n' : '\n\n';
+    }
   });
   converter.escape = value => markdownText(value, {
     escapeBlockSyntax: true,
@@ -2741,7 +2747,6 @@ function importCommonMarkReferenceHtml(body, Parser, warnings, footnoteDefinitio
     filter: node => node.nodeName === 'A' && node.getAttribute('href') === '',
     replacement: content => '[' + content + ']()'
   });
-  const blockOptions = { unorderedListMarkerState, preserveCodeBlockText: true };
   converter.addRule('commonMarkCodeBlock', {
     filter: 'pre',
     replacement: (_, node) => '\n\n' + htmlBlock(node, warnings, 0, blockOptions) + '\n\n'
@@ -2785,13 +2790,14 @@ function importCommonMarkReferenceHtml(body, Parser, warnings, footnoteDefinitio
   });
   let markdownSource = converter.turndown(body);
   markdownSource = markdownSource.split(literalBangMarker).join('\\!');
-  const markdown = [markdownSource, ...footnoteDefinitions]
+  const imported = convertFromMarkdown(markdownSource, 'commonmark', { DOMParser: Parser });
+  const markdown = [imported.markdown, ...footnoteDefinitions]
     .filter(Boolean)
     .join('\n\n');
   if (!markdown && body.textContent?.trim()) {
     throw new Error('No readable document content could be converted from this HTML.');
   }
-  return { markdown, warnings };
+  return { markdown, warnings: [...warnings, ...imported.warnings] };
 }
 export function convertFromHtml(
   source,
@@ -2815,9 +2821,15 @@ export function convertFromHtml(
     warnings,
     resolveEmbeddedResource
   );
+  const commentWalker = document.createTreeWalker(document.body, 128);
+  const hasHtmlComments = Boolean(commentWalker.nextNode());
   const footnotes = extractWmdxHtmlFootnotes(document, warnings);
   const body = document.body;
-  if (isCommonMarkReferenceHtml(body)) {
+  if (hasHtmlComments && !warnings.some(warning => warning.includes('HTML comments'))) {
+    addWarning(warnings, 'HTML comments have no native Wmdx equivalent and were omitted.');
+  }
+  const hasEmbeddedResources = embeddedResources && Object.keys(embeddedResources).length > 0;
+  if (!hasEmbeddedResources && isCommonMarkReferenceHtml(body)) {
     return importCommonMarkReferenceHtml(body, Parser, warnings, footnotes.definitions);
   }
   const unorderedListMarkerState = { lastByIndent: new Map() };
