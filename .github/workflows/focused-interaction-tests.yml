@@ -15,7 +15,7 @@ on:
           - commonmark-html
           - commonmark-raw-html
       commonmark_cases:
-        description: For commonmark-html: non-raw-HTML example numbers; blank runs all 575
+        description: Optional core example numbers for commonmark-html; blank runs all 575
         type: string
         required: false
         default: ''
@@ -52,12 +52,12 @@ jobs:
             test/commonmark-spec.test.cjs
 
       - name: Build Web Bundle
-        if: inputs.suite != 'commonmark-html'
+        if: inputs.suite != 'commonmark-html' && inputs.suite != 'commonmark-raw-html'
         working-directory: web
         run: npm run build
 
       - name: Install Playwright Chromium
-        if: inputs.suite != 'commonmark-html'
+        if: inputs.suite != 'commonmark-html' && inputs.suite != 'commonmark-raw-html'
         working-directory: web
         run: npx playwright install --with-deps chromium
 
