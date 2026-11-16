@@ -38,12 +38,6 @@
             app:defaultValue="false" />
 
         <com.wmdx.markdownapp.ResetSwitchPreference
-            app:key="pref_wmdx_color_syntax_enabled"
-            app:title="Wmdx Highlight and Pen Syntax"
-            app:summary="Recognize Wmdx highlight color slots and pen colors"
-            app:defaultValue="false" />
-
-        <com.wmdx.markdownapp.ResetSwitchPreference
             app:key="pref_obsidian_highlight_enabled"
             app:title="Obsidian Highlight Syntax"
             app:summary="Recognize Obsidian's uncolored ==highlight== syntax"

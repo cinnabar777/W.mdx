@@ -504,7 +504,7 @@ object PreferenceResetHelper {
             key == "pref_paragraph_margin_bottom" -> 8
             key == "pref_link_decoration" -> "solid"
             key == "pref_link_underline_thickness" -> 1
-            key == "pref_links_authoring_syntax" -> "wmdx"
+            key == "pref_links_authoring_syntax" -> "commonmark"
             key == "pref_code_padding" -> 4
             key == "pref_code_border_radius" -> 4
             key == "pref_body_margin_left" -> 16
@@ -554,8 +554,8 @@ object PreferenceResetHelper {
             key == "pref_callout_line_color" -> "default"
             key == "pref_callout_syntax_enabled" ||
                 key == "pref_callout_syntax_wmdx_enabled" ||
-                key == "pref_callout_syntax_obsidian_enabled" -> true
-            key == "pref_callout_authoring_syntax" -> "wmdx"
+                key == "pref_callout_syntax_obsidian_enabled" -> false
+            key == "pref_callout_authoring_syntax" -> "obsidian"
             key == "pref_callout_bg_color" -> "default"
             key == "pref_callout_text_color" -> "default"
             key == "pref_callout_inherit_body_typography" -> true
@@ -906,28 +906,36 @@ object PreferenceResetHelper {
                     "pref_pen_blue_text_color" to "#4dabf7",
                     "pref_pen_purple_text_color" to "#845ef7"
                 )[key]
-            key == "pref_underline_use_wmdx_syntax" -> true
+            key == "pref_underline_use_wmdx_syntax" -> false
             key == "pref_links_enabled" ||
                 key == "pref_links_commonmark_enabled" ||
                 key == "pref_links_reference_enabled" ||
-                key == "pref_links_obsidian_enabled" ||
-                key == "pref_links_wmdx_enabled" ||
                 key == "pref_blockquote_syntax_enabled" ||
                 key == "pref_heading_syntax_enabled" ||
-                key == "pref_heading_syntax_wmdx_enabled" ||
                 key == "pref_heading_syntax_hash_enabled" ||
                 key == "pref_heading_syntax_setext_enabled" ||
+                key == "pref_list_syntax_enabled" ||
+                key == "pref_list_syntax_markdown_enabled" -> true
+            key == "pref_gfm_extensions_enabled" ||
+                key == "pref_links_obsidian_enabled" ||
+                key == "pref_links_wmdx_enabled" ||
+                key == "pref_heading_syntax_wmdx_enabled" ||
                 key == "pref_footnote_syntax_enabled" ||
                 key == "pref_footnote_syntax_wmdx_enabled" ||
                 key == "pref_footnote_syntax_markdown_enabled" ||
                 key == "pref_footnote_syntax_obsidian_inline_enabled" ||
-                key == "pref_list_syntax_enabled" ||
-                key == "pref_list_syntax_markdown_enabled" ||
                 key == "pref_list_syntax_gfm_tasks_enabled" ||
-                key == "pref_list_syntax_wmdx_enabled" -> true
-            key == "pref_heading_authoring_syntax" -> "wmdx"
-            key == "pref_footnote_authoring_syntax" -> "wmdx"
-            key == "pref_list_authoring_syntax" -> "wmdx"
+                key == "pref_list_syntax_wmdx_enabled" ||
+                key == "pref_callout_syntax_enabled" ||
+                key == "pref_callout_syntax_wmdx_enabled" ||
+                key == "pref_callout_syntax_obsidian_enabled" ||
+                key == "pref_wmdx_color_syntax_enabled" ||
+                key == "pref_obsidian_highlight_enabled" ||
+                key == "pref_wmdx_subscript_enabled" ||
+                key == "pref_wmdx_superscript_enabled" -> false
+            key == "pref_heading_authoring_syntax" -> "hash"
+            key == "pref_footnote_authoring_syntax" -> "markdown"
+            key == "pref_list_authoring_syntax" -> "markdown"
             key == "pref_list_default_bullet_marker" -> "-"
             key == "pref_list_default_ordered_style" -> "decimal"
             key.startsWith("pref_underline_") && key.endsWith("_color") -> "default"
