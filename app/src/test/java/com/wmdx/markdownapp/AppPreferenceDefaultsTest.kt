@@ -38,7 +38,7 @@ class AppPreferenceDefaultsTest {
         assertEquals(false, defaults["pref_underline_use_wmdx_syntax"])
         assertEquals("#666666", defaults["pref_todo_unchecked_color"])
 
-        assertEquals(259, defaults.size)
+        assertEquals(268, defaults.size)
         assertFalse(defaults.keys.any { "font_file" in it })
         assertTrue(defaults.containsKey("pref_toolbar_bottom_config"))
         assertTrue(defaults.containsKey("pref_list_wrap_under_text"))
