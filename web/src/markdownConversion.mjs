@@ -245,11 +245,23 @@ function protectCodeFences(source, transformLines) {
 
   for (let index = 0; index < lines.length; index += 1) {
     const line = lines[index];
+    const opening = /^ {0,3}(`{3,}|~{3,})(.*)$/.exec(line);
     if (fence) {
       protectedLines.add(index);
       const close = new RegExp(`^ {0,3}${fence.character}{${fence.length},}[ \\t]*$`);
       if (close.test(line)) fence = null;
       continue;
+    }
+    if (
+      mathFence &&
+      opening &&
+      !(opening[1][0] === '`' && opening[2].includes('`'))
+    ) {
+      // A Markdown code fence takes precedence over an unmatched math opener.
+      // Otherwise the abandoned math range can consume and later unprotect the
+      // code fence, allowing Wmdx inline syntax to rewrite code contents.
+      mathFence = null;
+      protectedMathLines = [];
     }
     if (mathFence) {
       protectedLines.add(index);
@@ -264,7 +276,6 @@ function protectCodeFences(source, transformLines) {
       }
       continue;
     }
-    const opening = /^ {0,3}(`{3,}|~{3,})(.*)$/.exec(line);
     if (
       opening &&
       !(opening[1][0] === '`' && opening[2].includes('`'))
@@ -2091,7 +2102,11 @@ function htmlBlock(node, warnings, depth = 0, options = {}) {
   }
   if (/^h[1-6]$/.test(tag)) {
     const level = Number(tag[1]);
-    return `.${level} ${inline({ ...options, escapeBlockSyntax: false }).trim()}`;
+    const serialized = inline({ ...options, escapeBlockSyntax: false }).trim();
+    const content = node.querySelector('br')
+      ? serialized
+      : serialized.replace(/[ \t\r\n\f]+/g, ' ');
+    return `.${level} ${content}`;
   }
   if (tag === 'p') {
     const content = inline(options).trim();

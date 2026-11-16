@@ -491,10 +491,20 @@ test('Markdown dialects use native image syntax when size and alignment are abse
 
 test('An unmatched math fence does not shield later Markdown from export', async () => {
   const { exportMarkdown } = await import('../src/markdownConversion.mjs');
-  const source = '$$\nAn incomplete math block.\n\n![assets/pixel.png|Pixel||]';
+  const source = [
+    '$$',
+    'An incomplete math block.',
+    '',
+    '```math',
+    'x^{n} + y^{m}',
+    '```',
+    '',
+    '![assets/pixel.png|Pixel||]'
+  ].join('\n');
   const result = exportMarkdown(source, 'commonmark');
 
   assert.match(result.markdown, /!\[Pixel\]\(assets\/pixel\.png\)/);
+  assert.match(result.markdown, /```math\nx\^{n} \+ y\^{m}\n```/);
 });
 
 test('Obsidian inline footnotes warn when exported to a dialect without footnotes', async () => {
@@ -670,6 +680,29 @@ test('HTML import converts semantic content and omits active elements', async ()
   assert.ok(result.warnings.some(warning => warning.includes('script')));
   const comments = convertFromHtml('<p>Text</p><!-- hidden note -->', Parser);
   assert.ok(comments.warnings.some(warning => warning.includes('comments')));
+});
+
+test('HTML heading whitespace stays inside the heading through conversion', async () => {
+  const { JSDOM } = require('jsdom');
+  const { convertFromHtml, exportMarkdown } =
+    await import('../src/markdownConversion.mjs');
+  const { renderMarkdownHtml } = await import('../src/htmlExport.mjs');
+  const dom = new JSDOM('');
+  const imported = convertFromHtml('<h1>Wrapped\nheading</h1>', dom.window.DOMParser);
+  for (const profile of ['commonmark', 'gfm', 'obsidian']) {
+    const exported = exportMarkdown(imported.markdown, profile);
+    const rendered = renderMarkdownHtml(exported.markdown, {
+      profile,
+      window: dom.window
+    });
+    const document = new dom.window.DOMParser()
+      .parseFromString(rendered.html, 'text/html');
+    const heading = document.querySelector('h1');
+
+    assert.ok(heading, `${profile} keeps the heading`);
+    assert.equal(heading.textContent, 'Wrapped heading');
+    assert.equal(document.querySelectorAll('p').length, 0);
+  }
 });
 
 test('generated HTML table of contents imports as working links in every Markdown flavor', async () => {
