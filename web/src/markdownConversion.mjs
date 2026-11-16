@@ -2308,9 +2308,7 @@ function htmlBlock(node, warnings, depth = 0, options = {}) {
         if (item.hasAttribute('value')) {
           const explicitValue = Number(item.getAttribute('value'));
           addWarning(warnings, 'Custom ordered-list item values were normalized during HTML import.');
-          if (Number.isFinite(explicitValue) && explicitValue >= 1) {
-            itemOrdinal = explicitValue;
-          }
+          if (Number.isFinite(explicitValue) && explicitValue >= 1) itemOrdinal = explicitValue;
         }
         const checkbox = item.querySelector(
           ':scope > input[type="checkbox"], :scope > p > input[type="checkbox"]'
@@ -2322,6 +2320,8 @@ function htmlBlock(node, warnings, depth = 0, options = {}) {
           : unorderedMarker;
         const task = checkbox ? `[${checkbox.checked ? 'x' : ' '}] ` : '';
         const bodyBlocks = [];
+        let inlineBody = '';
+        let hasBlockContent = false;
         let inlineNodes = [];
         const flushInlineNodes = () => {
           if (!inlineNodes.length) return;
@@ -2333,15 +2333,35 @@ function htmlBlock(node, warnings, depth = 0, options = {}) {
             .join('')
             .trim();
           inlineNodes = [];
-          if (value.trim()) bodyBlocks.push(value);
+          if (!value) return;
+          if (!hasBlockContent && !inlineBody) inlineBody = value;
+          else bodyBlocks.push(value);
         };
         for (const child of Array.from(item.childNodes)) {
           if (child.nodeType === 1 &&
               ['input', 'ul', 'ol'].includes(child.tagName.toLowerCase())) {
             continue;
           }
-          const isBlock = child.nodeType === 1 &&
-            RAW_HTML_BLOCK_TAGS.has(child.tagName.toLowerCase());
+          const childTag = child.nodeType === 1 ? child.tagName.toLowerCase() : '';
+          if (childTag === 'p' && !child.hasAttribute('style') && !child.hasAttribute('align')) {
+            flushInlineNodes();
+            const value = Array.from(child.childNodes)
+              .map(grandchild => inlineHtmlNode(grandchild, warnings, {
+                ...options,
+                escapeBlockSyntax: true
+              }))
+              .join('')
+              .trim();
+            if (value) {
+              if (!hasBlockContent && !inlineBody) inlineBody = value;
+              else {
+                bodyBlocks.push(value);
+                hasBlockContent = true;
+              }
+            }
+            continue;
+          }
+          const isBlock = childTag && RAW_HTML_BLOCK_TAGS.has(childTag);
           if (!isBlock) {
             inlineNodes.push(child);
             continue;
@@ -2351,7 +2371,10 @@ function htmlBlock(node, warnings, depth = 0, options = {}) {
             ...options,
             escapeBlockSyntax: true
           });
-          if (value.trim()) bodyBlocks.push(value);
+          if (value.trim()) {
+            bodyBlocks.push(value);
+            hasBlockContent = true;
+          }
         }
         flushInlineNodes();
         const itemIndent = ' '.repeat(options.listIndent ?? 0);
@@ -2367,16 +2390,22 @@ function htmlBlock(node, warnings, depth = 0, options = {}) {
           }))
           .filter(Boolean)
           .join('\n');
-        const body = bodyBlocks.shift() || '';
-        const prefix = `${itemIndent}${marker} ${task}${body}`;
-        const continuation = bodyBlocks.map(block => block.split('\n')
-          .map(line => `${continuationIndent}${line}`)
-          .join('\n')).join('\n\n');
-        const output = `${prefix}${continuation ? `\n\n${continuation}` : ''}` +
-          `${nested ? `\n${nested}` : ''}`;
+        const itemContent = task + inlineBody;
+        const prefix = `${itemIndent}${marker}${itemContent ? ` ${itemContent}` : ''}`;
+        const bodySeparator = looseList ? '\n\n' : '\n';
+        const continuation = bodyBlocks
+          .map(block => block.split('\n')
+            .map(line => `${continuationIndent}${line}`)
+            .join('\n'))
+          .join(bodySeparator);
+        const inlineBlockSeparator = inlineBody && looseList ? '\n\n' : '\n';
+        const output = prefix +
+          (continuation ? inlineBlockSeparator + continuation : '') +
+          (nested ? `\n${nested}` : '');
         nextOrdinal = itemOrdinal + 1;
         return output;
-      }).join(looseList ? '\n\n' : '\n');
+      })
+      .join(looseList ? '\n\n' : '\n');
   }
   if (tag === 'table') {
     const rowNodes = Array.from(node.querySelectorAll('tr'))
@@ -2702,6 +2731,47 @@ function importCommonMarkReferenceHtml(body, Parser, warnings, footnoteDefinitio
   const unorderedListMarkerState = { lastByIndent: new Map() };
   const orderedListDelimiters = new WeakMap();
   const blockOptions = { unorderedListMarkerState, preserveCodeBlockText: true };
+  const leadingNbspMarkers = new Map();
+  const softBreakMarker = String.fromCharCode(0xE002) + 'WMDX_SOFT_BREAK' + String.fromCharCode(0xE003);
+  const leadingNbspCharacter = String.fromCharCode(0x00A0);
+  const blockStartTags = new Set([
+    'blockquote', 'body', 'div', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'li', 'p', 'td', 'th'
+  ]);
+  const isBlockStartTextNode = textNode => {
+    if (!textNode.nodeValue?.startsWith(leadingNbspCharacter)) return false;
+    let current = textNode;
+    let parent = current.parentNode;
+    while (parent && parent !== body.ownerDocument) {
+      let sibling = current.previousSibling;
+      while (sibling) {
+        if (sibling.nodeType === 8 ||
+            (sibling.nodeType === 3 && !sibling.nodeValue.trim())) {
+          sibling = sibling.previousSibling;
+          continue;
+        }
+        return false;
+      }
+      if (parent.nodeType === 1 && blockStartTags.has(parent.tagName.toLowerCase())) return true;
+      current = parent;
+      parent = parent.parentNode;
+    }
+    return false;
+  };
+  const textWalker = body.ownerDocument.createTreeWalker(body, 4);
+  let textNode = textWalker.nextNode();
+  let markerIndex = 0;
+  while (textNode) {
+    if (!textNode.parentElement?.closest('pre, code')) {
+      if (isBlockStartTextNode(textNode)) {
+        const leading = new RegExp('^' + leadingNbspCharacter + '+').exec(textNode.nodeValue)?.[0] ?? '';
+        const marker = String.fromCharCode(0xE100) + 'WMDX_NBSP_' + (++markerIndex) + String.fromCharCode(0xE101);
+        leadingNbspMarkers.set(marker, '&nbsp;'.repeat(leading.length));
+        textNode.nodeValue = marker + textNode.nodeValue.slice(leading.length);
+      }
+      textNode.nodeValue = textNode.nodeValue.replace(/\r\n?/g, softBreakMarker);
+    }
+    textNode = textWalker.nextNode();
+  }
   const converter = new TurndownService({
     headingStyle: 'atx',
     codeBlockStyle: 'fenced',
@@ -2790,6 +2860,15 @@ function importCommonMarkReferenceHtml(body, Parser, warnings, footnoteDefinitio
   });
   let markdownSource = converter.turndown(body);
   markdownSource = markdownSource.split(literalBangMarker).join('\\!');
+  for (const [marker, replacement] of leadingNbspMarkers) {
+    markdownSource = markdownSource.split(marker).join(replacement);
+  }
+  markdownSource = markdownSource.split(softBreakMarker).join('\n');
+  markdownSource = protectCodeFences(markdownSource, (lines, protectedLines) =>
+    lines.map((line, index) => !protectedLines.has(index) && line.startsWith(leadingNbspCharacter)
+      ? '&nbsp;' + line.slice(1)
+      : line)
+  );
   const imported = convertFromMarkdown(markdownSource, 'commonmark', { DOMParser: Parser });
   const markdown = [imported.markdown, ...footnoteDefinitions]
     .filter(Boolean)
