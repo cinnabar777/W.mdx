@@ -394,6 +394,69 @@ test('Obsidian info callout warns when GFM normalizes it to NOTE', async () => {
   assert.deepEqual(obsidian.warnings, []);
 });
 
+test('Obsidian callout export covers every GFM alert and fold-state loss', async () => {
+  const { convertFromMarkdown, exportMarkdown } =
+    await import('../src/markdownConversion.mjs');
+  const alertTypes = [
+    ['note', 'NOTE'],
+    ['info', 'NOTE'],
+    ['tip', 'TIP'],
+    ['important', 'IMPORTANT'],
+    ['warning', 'WARNING'],
+    ['caution', 'CAUTION']
+  ];
+
+  for (const [type, expectedAlert] of alertTypes) {
+    for (const state of ['', '-', '+']) {
+      const imported = convertFromMarkdown(
+        `> [!${type}]${state} Callout title\n> Body`,
+        'obsidian'
+      );
+      const gfm = exportMarkdown(imported.markdown, 'gfm');
+      assert.equal(
+        gfm.markdown,
+        `> [!${expectedAlert}]\n> **Callout title**\n> Body\n`,
+        `${type} ${state || 'unfolded'}`
+      );
+      assert.equal(
+        gfm.warnings.some(warning => warning.includes('returns as note')),
+        type === 'info'
+      );
+      assert.equal(
+        gfm.warnings.some(warning => warning.includes('expanded or collapsed state')),
+        Boolean(state)
+      );
+      const returned = exportMarkdown(
+        convertFromMarkdown(gfm.markdown, 'gfm').markdown,
+        'obsidian'
+      );
+      const returnedType = expectedAlert.toLowerCase();
+      assert.match(
+        returned.markdown,
+        new RegExp(`^> \\[!${returnedType}\\]$`, 'm'),
+        `${type} returns as a callout`
+      );
+      assert.doesNotMatch(
+        returned.markdown,
+        new RegExp(`^> \\[!${returnedType}\\][+-]`, 'm')
+      );
+    }
+  }
+
+  const unsupported = convertFromMarkdown(
+    '> [!question]-\n> Body',
+    'obsidian'
+  );
+  const commonmark = exportMarkdown(unsupported.markdown, 'commonmark');
+  const gfm = exportMarkdown(unsupported.markdown, 'gfm');
+  for (const converted of [commonmark, gfm]) {
+    assert.equal(converted.markdown, '> **question**\n> Body\n');
+    assert.ok(converted.warnings.some(warning =>
+      warning.includes('callout type, styling, and fold state')
+    ));
+  }
+});
+
 test('CommonMark wikilink-like text stays literal when exported to Obsidian', async () => {
   const { convertFromMarkdown, exportMarkdown } =
     await import('../src/markdownConversion.mjs');
