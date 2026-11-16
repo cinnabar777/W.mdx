@@ -527,6 +527,7 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         WindowRegistry.registerActivity(this)
+        AppPreferenceDefaults.initialize(this)
         val startupPreferences = PreferenceManager.getDefaultSharedPreferences(this)
         migrateEditorModePreferences(startupPreferences)
         migrateFloatingToolbarHideDelayPreference(startupPreferences)

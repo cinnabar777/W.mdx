@@ -10,6 +10,8 @@ on:
         default: tables
         options:
           - tables
+          - lists
+          - android-lists
           - browser-layout
           - editor-interactions
           - all-browser
@@ -17,7 +19,7 @@ on:
 
 jobs:
   browser:
-    if: inputs.suite != 'android-webview'
+    if: inputs.suite != 'android-webview' && inputs.suite != 'android-lists'
     runs-on: ubuntu-24.04
     steps:
       - name: Checkout repository
@@ -42,6 +44,10 @@ jobs:
         if: inputs.suite == 'tables'
         run: npm --prefix web run test:browser:tables
 
+      - name: Run list workflow matrix
+        if: inputs.suite == 'lists'
+        run: npm --prefix web run test:browser:lists
+
       - name: Run browser layout suite
         if: inputs.suite == 'browser-layout'
         run: npm --prefix web run test:browser:layout
@@ -54,8 +60,16 @@ jobs:
         if: inputs.suite == 'all-browser'
         run: npm --prefix web run test:browser
 
+      - name: Upload list workflow screenshots
+        if: always() && inputs.suite == 'lists'
+        uses: actions/upload-artifact@v4
+        with:
+          name: List-Workflow-Matrix-Screenshots
+          path: web/artifacts/list-workflow/**
+          if-no-files-found: ignore
+
   android-webview:
-    if: inputs.suite == 'android-webview'
+    if: inputs.suite == 'android-webview' || inputs.suite == 'android-lists'
     runs-on: ubuntu-24.04
     steps:
       - name: Checkout repository
@@ -106,7 +120,12 @@ jobs:
           profile: pixel_2
           disable-animations: true
           emulator-boot-timeout: 1200
-          script: sh scripts/run-android-webview-tests.sh
+          script: |
+            if [ "${{ inputs.suite }}" = "android-lists" ]; then
+              ANDROID_TEST_CLASS=com.wmdx.markdownapp.ListSettingsInteractionTest sh scripts/run-android-webview-tests.sh
+            else
+              sh scripts/run-android-webview-tests.sh
+            fi
 
       - name: Upload Android WebView test diagnostics
         if: always()

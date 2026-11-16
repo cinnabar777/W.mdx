@@ -458,11 +458,16 @@ object PreferenceResetHelper {
     }
 
     fun getDefaultValue(key: String): Any? {
+        return AppPreferenceDefaults.get(key) ?: getBuiltInDefaultValue(key)
+    }
+
+    private fun getBuiltInDefaultValue(key: String): Any? {
         return when {
             getPerHeadingOverrideDefault(key) != null -> getPerHeadingOverrideDefault(key)
             key.endsWith("_font_family") -> "default"
             key == "pref_body_font_size" -> 16
             key == "pref_body_font_weight" -> 400
+            key == "pref_soft_breaks_as_spaces" -> false
             key == "pref_body_text_color" -> "default"
             key == "pref_body_background_color" -> "default"
             key == "pref_heading_scale_percent" -> 100
@@ -1042,6 +1047,7 @@ object PreferenceResetHelper {
         return when (defaultVal) {
             is Int -> prefs.getInt(key, defaultVal) != defaultVal
             is Boolean -> prefs.getBoolean(key, defaultVal) != defaultVal
+            is Float -> prefs.getFloat(key, defaultVal) != defaultVal
             is String -> prefs.getString(key, defaultVal) != defaultVal
             else -> false
         }
@@ -1345,21 +1351,38 @@ object PreferenceResetHelper {
             pref.setDefaultValue(defVal)
         }
         if (keepsInheritedValue) pref.isPersistent = false
-        when (pref) {
+        val valueHandledByPreference = when (pref) {
             is SeekBarPreference -> {
                 if (defVal is Int) {
                     pref.value = defVal
                 }
+                true
             }
             is EditTextPreference -> {
                 if (defVal is String) pref.text = defVal
+                true
             }
             is ListPreference -> {
                 if (defVal is String) pref.value = defVal
+                true
             }
             is SwitchPreferenceCompat -> {
                 if (defVal is Boolean) pref.isChecked = defVal
+                true
             }
+            else -> false
+        }
+        if (!valueHandledByPreference && defVal != null) {
+            val editor = prefs.edit()
+            when (defVal) {
+                is Boolean -> editor.putBoolean(key, defVal)
+                is Int -> editor.putInt(key, defVal)
+                is Long -> editor.putLong(key, defVal)
+                is Float -> editor.putFloat(key, defVal)
+                is String -> editor.putString(key, defVal)
+                else -> Unit
+            }
+            editor.apply()
         }
         // Setters above may persist their value. For a heading override, the
         // value shown by the control is inherited; its key must remain absent.

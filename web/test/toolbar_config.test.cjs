@@ -941,3 +941,29 @@ test('custom multicolor icons retain authored colors only when explicitly reques
     'tinting a filled SVG must not add a stroke that makes it look heavier'
   );
 });
+
+test('backup toolbar icons become distinct defaults without replacing the toolbar layout', async () => {
+  const {
+    DEFAULT_BOTTOM_TOOLBAR_CONFIG,
+    normalizeBottomToolbarConfig
+  } = await import('../src/toolbarConfig.js');
+  const defaults = normalizeBottomToolbarConfig(null);
+
+  assert.deepEqual(defaults.order, [...DEFAULT_BOTTOM_TOOLBAR_CONFIG.order]);
+  assert.deepEqual(defaults.deletedGroups, []);
+  assert.notEqual(defaults.styles.heading.customSvg, defaults.styles.table.customSvg);
+  assert.notEqual(defaults.styles.openFile.customSvg, defaults.styles.saveAsMdzip.customSvg);
+  assert.match(defaults.styles.saveAsMdzip.customSvg, />MDZ</);
+
+  const savedLayout = normalizeBottomToolbarConfig({
+    version: 16,
+    order: ['undo', 'heading', 'lists', 'format', 'table', 'insert', 'menu'],
+    styles: { heading: { iconColor: '#123456' } }
+  });
+  assert.equal(
+    savedLayout.styles.heading.customSvg,
+    defaults.styles.heading.customSvg,
+    'user layouts without a custom SVG inherit the new default icon'
+  );
+  assert.equal(savedLayout.styles.heading.iconColor, '#123456');
+});

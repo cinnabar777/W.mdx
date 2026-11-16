@@ -75,9 +75,17 @@ if [ "$booted" -eq 1 ]; then
         if [ -n "$app_pid" ]; then
           log "WebView warm-up app process is alive (pid $app_pid); starting instrumentation."
           log "Starting Android WebView instrumentation."
-          ./gradlew connectedDebugAndroidTest \
-            -x installDebug -x installDebugAndroidTest \
-            --stacktrace --console=plain --max-workers=1
+          if [ -n "${ANDROID_TEST_CLASS:-}" ]; then
+            log "Running focused instrumentation class: $ANDROID_TEST_CLASS"
+            ./gradlew connectedDebugAndroidTest \
+              "-Pandroid.testInstrumentationRunnerArguments.class=$ANDROID_TEST_CLASS" \
+              -x installDebug -x installDebugAndroidTest \
+              --stacktrace --console=plain --max-workers=1
+          else
+            ./gradlew connectedDebugAndroidTest \
+              -x installDebug -x installDebugAndroidTest \
+              --stacktrace --console=plain --max-workers=1
+          fi
           test_status=$?
           reported_tests=0
           for test_report in app/build/outputs/androidTest-results/connected/debug/TEST-*.xml; do

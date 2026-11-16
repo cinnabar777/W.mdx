@@ -45,6 +45,12 @@
         app:title="Body Text Font File"
         app:summary="Choose a custom font file for body text when Font Family is set to Default" />
 
+    <com.wmdx.markdownapp.ResetSwitchPreference
+        app:key="pref_soft_breaks_as_spaces"
+        app:title="Join Soft Line Breaks"
+        app:summary="When enabled, a single Return displays as a space; when disabled, it stays a line break. Two trailing spaces still create a visible hard break."
+        android:defaultValue="false" />
+
     <com.wmdx.markdownapp.ResetSeekBarPreference
         app:key="pref_body_margin_left"
         app:title="Body Left Margin (px)"

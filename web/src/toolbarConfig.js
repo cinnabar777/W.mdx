@@ -103,6 +103,45 @@ export const BOTTOM_TOOLBAR_STYLE_IDS = Object.freeze([
   ...BUILT_IN_HOLDING_ITEM_IDS
 ]);
 
+const DEFAULT_TOOLBAR_ICON_STYLES = Object.freeze({
+  heading: {
+    customSvg: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 5v14M11 5v14M3 12h8"/><path d="M17 5h5m-2.5-2.5v5"/><path d="M17 18h5"/></svg>',
+    preserveSvgColors: false
+  },
+  table: {
+    customSvg: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18"/><path d="M3 15h18"/><path d="M12 3v18"/></svg>',
+    preserveSvgColors: false
+  },
+  openFile: {
+    customSvg: '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 14 1.5-2.9A2 2 0 0 1 9.24 10H20a2 2 0 0 1 1.94 2.5l-1.54 6a2 2 0 0 1-1.95 1.5H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h3.9a2 2 0 0 1 1.69.9l.81 1.2a2 2 0 0 0 1.67.9H18a2 2 0 0 1 2 2v2"/></svg>',
+    preserveSvgColors: false
+  },
+  saveAsMdzip: {
+    customSvg: '<svg viewBox="0 0 24 24" aria-hidden="true"><text x="12" y="17" text-anchor="middle" font-size="13" font-weight="bold" font-family="system-ui, sans-serif" fill="currentColor" textLength="22" lengthAdjust="spacingAndGlyphs">MDZ</text></svg>',
+    preserveSvgColors: false
+  },
+  convertFromMarkdown: {
+    customSvg: '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"/><path d="M16 16h5v5"/><circle cx="12" cy="12" r="1"/></svg>',
+    preserveSvgColors: false
+  },
+  pasteFromDialect: {
+    customSvg: '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="8" height="4" x="8" y="2" rx="1" ry="1"/><path d="M8 4H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/><path d="M16 4h2a2 2 0 0 1 2 2v4"/><path d="M21 14H11"/><path d="m15 10-4 4 4 4"/></svg>',
+    preserveSvgColors: false
+  },
+  exportMarkdown: {
+    customSvg: '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 15V3"/><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m7 10 5 5 5-5"/></svg>',
+    preserveSvgColors: false
+  },
+  lintMarkdown: {
+    customSvg: '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m16 22-1-4"/><path d="M19 14a1 1 0 0 0 1-1v-1a2 2 0 0 0-2-2h-3a1 1 0 0 1-1-1V4a2 2 0 0 0-4 0v5a1 1 0 0 1-1 1H6a2 2 0 0 0-2 2v1a1 1 0 0 0 1 1"/><path d="M19 14H5l-1.973 6.767A1 1 0 0 0 4 22h16a1 1 0 0 0 .973-1.233z"/><path d="m8 22 1-4"/></svg>',
+    preserveSvgColors: false
+  },
+  newWindow: {
+    customSvg: '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="14" height="20" x="5" y="2" rx="2" ry="2"/><path d="M12 18h.01"/></svg>',
+    preserveSvgColors: false
+  }
+});
+
 export const DEFAULT_BOTTOM_TOOLBAR_CONFIG = Object.freeze({
   version: 16,
   order: BOTTOM_TOOLBAR_ITEM_IDS,
@@ -113,8 +152,15 @@ export const DEFAULT_BOTTOM_TOOLBAR_CONFIG = Object.freeze({
   deletedKeys: [],
   customGroups: {},
   customKeys: {},
-  styles: {}
+  styles: DEFAULT_TOOLBAR_ICON_STYLES
 });
+
+function cloneDefaultToolbarStyles() {
+  return Object.fromEntries(
+    Object.entries(DEFAULT_BOTTOM_TOOLBAR_CONFIG.styles)
+      .map(([id, style]) => [id, { ...style }])
+  );
+}
 
 const FLOATING_DEFAULT_ORDER = Object.freeze([
   'highlightCycle',
@@ -294,7 +340,7 @@ export function normalizeBottomToolbarConfig(rawConfig) {
       deletedKeys: [],
       customGroups: {},
       customKeys: {},
-      styles: {}
+      styles: cloneDefaultToolbarStyles()
     };
   }
   const parsedVersion = Number.isFinite(Number(parsed.version))
@@ -703,7 +749,7 @@ export function normalizeBottomToolbarConfig(rawConfig) {
   }
   const hidden = holding.filter(id => rootIds.includes(id));
 
-  const styles = {};
+  const styles = cloneDefaultToolbarStyles();
   if (parsed.styles && typeof parsed.styles === 'object' && !Array.isArray(parsed.styles)) {
     const allowedStyleIds = new Set([
       ...BOTTOM_TOOLBAR_STYLE_IDS.filter(id =>
@@ -781,7 +827,9 @@ export function normalizeBottomToolbarConfig(rawConfig) {
       if (Object.keys(gestureActionIcons).length) {
         normalized.gestureActionIcons = gestureActionIcons;
       }
-      if (Object.keys(normalized).length) styles[id] = normalized;
+      if (Object.keys(normalized).length) {
+        styles[id] = { ...styles[id], ...normalized };
+      }
     }
   }
 

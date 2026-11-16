@@ -479,6 +479,7 @@ let blockquoteSyntaxSettings = normalizeBlockquoteSyntaxSettings();
 let footnoteSyntaxSettings = normalizeFootnoteSyntaxSettings();
 let listSyntaxSettings = normalizeListSyntaxSettings();
 let currentMarkdownProfile = 'wmdx';
+let softBreaksAsSpaces = false;
 let markdownAutoPasteEnabled = true;
 let gfmExtensionsEnabled = true;
 let wmdxSubscriptEnabled = true;
@@ -5668,7 +5669,7 @@ export function buildPersistentLayoutDecorations(state) {
   const renderPlan = markdownRenderPlan(state);
   const doc = state.doc;
   const selection = state.selection.main;
-  const softBreaks = renderPlan.raw
+  const softBreaks = renderPlan.raw || !softBreaksAsSpaces
     ? []
     : collectMarkdownSoftBreaks(state, undefined, renderPlan.semantic);
   const softBreakContinuationLines = new Set(
@@ -12532,6 +12533,7 @@ window.editorBridge = {
       : prefsJson;
     const prefs = applyMarkdownDialectProfile(storedPreferences);
     currentMarkdownProfile = prefs.pref_markdown_profile;
+    softBreaksAsSpaces = prefs.pref_soft_breaks_as_spaces === true;
     markdownAutoPasteEnabled = prefs.pref_markdown_auto_paste_enabled !== false;
     const hasSyntaxExposurePreference = Object.prototype.hasOwnProperty.call(
       prefs,

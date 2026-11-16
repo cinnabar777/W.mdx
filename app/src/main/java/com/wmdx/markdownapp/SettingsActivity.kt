@@ -20,6 +20,7 @@ class SettingsActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        AppPreferenceDefaults.initialize(this)
         setContentView(R.layout.activity_settings)
         applySystemBarDimming()
         supportActionBar?.setDisplayHomeAsUpEnabled(true)
@@ -448,6 +449,7 @@ class SettingsFragment : BaseSettingsFragment() {
             .setPositiveButton("Reset All") { _, _ ->
                 val prefs = PreferenceManager.getDefaultSharedPreferences(context)
                 prefs.edit().clear().apply()
+                AppPreferenceDefaults.initialize(context)
 
                 val fontDir = File(context.filesDir, "fonts")
                 if (fontDir.exists()) {
