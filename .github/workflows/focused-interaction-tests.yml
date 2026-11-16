@@ -46,6 +46,8 @@ jobs:
       - name: Run CommonMark raw HTML and security interop cases
         if: inputs.suite == 'commonmark-raw-html'
         working-directory: web
+        env:
+          COMMONMARK_RAW_HTML_CASES: ${{ inputs.commonmark_cases }}
         run: |
           node --test \
             --test-name-pattern='CommonMark (raw HTML|active HTML|inline HTML|angle-bracket link|HTML cases)' \

@@ -97,9 +97,27 @@ before(async () => {
   wmdxMarkdown = markdown({
     extensions: [GFM, Table, Strikethrough, TaskList, wmdxCommonMarkCompatibility]
   });
-  rawHtmlCases = commonmarkCases.filter(isRawHtmlCase);
-  assert.equal(rawHtmlCases.length, 77, 'the pinned corpus has 77 raw-HTML examples');
-  const rawHtmlIds = new Set(rawHtmlCases.map(example => example.example));
+  const allRawHtmlCases = commonmarkCases.filter(isRawHtmlCase);
+  assert.equal(allRawHtmlCases.length, 77, 'the pinned corpus has 77 raw-HTML examples');
+  const rawHtmlIds = new Set(allRawHtmlCases.map(example => example.example));
+  const rawRequestedIds = String(process.env.COMMONMARK_RAW_HTML_CASES ?? '').trim();
+  const requestedRawIds = rawRequestedIds
+    ? rawRequestedIds.split(',').map(value => Number(value.trim()))
+    : [];
+  assert.ok(
+    requestedRawIds.every(id => Number.isInteger(id) && id > 0),
+    'COMMONMARK_RAW_HTML_CASES must be a comma-separated list of positive example numbers'
+  );
+  const requestedRaw = new Set(requestedRawIds);
+  assert.equal(requestedRaw.size, requestedRawIds.length, 'raw HTML case numbers must not repeat');
+  assert.deepEqual(
+    [...requestedRaw].filter(id => !rawHtmlIds.has(id)),
+    [],
+    'requested raw HTML case numbers must exist in the raw-HTML corpus'
+  );
+  rawHtmlCases = requestedRaw.size
+    ? allRawHtmlCases.filter(example => requestedRaw.has(example.example))
+    : allRawHtmlCases;
   const allCoreCases = commonmarkCases.filter(example => !rawHtmlIds.has(example.example));
   const rawRequestedIds = String(process.env.COMMONMARK_CASES ?? '').trim();
   const requestedIds = rawRequestedIds

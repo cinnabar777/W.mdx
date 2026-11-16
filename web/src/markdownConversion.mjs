@@ -2179,6 +2179,32 @@ function inlineHtmlNode(node, warnings, options = {}) {
   return content;
 }
 
+function serializeSafeHtmlBlock(node, warnings) {
+  const clone = node.cloneNode(true);
+  const unsafeElements = new Set(['script', 'style', 'iframe', 'object', 'embed', 'form']);
+  const elements = [clone, ...Array.from(clone.querySelectorAll('*'))];
+  for (const element of elements) {
+    const tag = element.tagName.toLowerCase();
+    if (unsafeElements.has(tag)) {
+      addWarning(warnings, `Active HTML element <${tag}> was omitted.`);
+      element.remove();
+      continue;
+    }
+    for (const attribute of Array.from(element.attributes)) {
+      const name = attribute.name.toLowerCase();
+      const value = attribute.value.trim().replace(/[\u0000-\u0020]+/g, '').toLowerCase();
+      const unsafeUrl = ['href', 'src', 'xlink:href', 'formaction'].includes(name) &&
+        /^(?:javascript|vbscript|data):/.test(value);
+      const unsafeStyle = name === 'style' &&
+        /(?:expression\s*\(|url\s*\(\s*['\"]?\s*(?:javascript|vbscript|data):)/i.test(attribute.value);
+      if (name.startsWith('on') || unsafeUrl || unsafeStyle) {
+        addWarning(warnings, 'Unsafe HTML attribute was removed during import.');
+        element.removeAttribute(attribute.name);
+      }
+    }
+  }
+  return clone.outerHTML;
+}
 function htmlBlock(node, warnings, depth = 0, options = {}) {
   if (node.nodeType === 3) return markdownText(node.nodeValue, options);
   if (node.nodeType === 8) {
@@ -2649,7 +2675,8 @@ function htmlBlock(node, warnings, depth = 0, options = {}) {
     }).filter(Boolean).join('\n');
   }
   if (tag === 'li') return children().join(' ');
-  return children().join(tag === 'div' || tag === 'section' ? '\n\n' : '');
+  if (tag === 'div' || tag === 'section') return serializeSafeHtmlBlock(node, warnings);
+  return children().join('');
 }
 
 function resolveEmbeddedHtmlResources(
