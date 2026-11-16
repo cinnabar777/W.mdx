@@ -1697,7 +1697,7 @@ export function convertFromMarkdown(source, format = 'commonmark', options = {})
       let text = escapeDialectSpecificWmdxSyntax(line, format, commonMarkReferences);
       text = escapeForeignCalloutMarkers(text, format);
       text = convertInlineHtmlToMarkdown(text, warnings, htmlParser, {
-      preserveUnsupportedHtmlAsRaw
+      preserveUnsupportedHtmlAsRaw: options.preserveUnsupportedHtmlAsRaw === true
     });
       if (format === 'obsidian') {
         text = convertObsidianLinksToWmdx(text, warnings);
