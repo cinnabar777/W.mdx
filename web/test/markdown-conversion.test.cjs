@@ -475,6 +475,8 @@ test('CommonMark wikilink-like text stays literal when exported to Obsidian', as
 test('Obsidian wikilinks and media embeds import to Wmdx resources outside code', async () => {
   const { convertFromMarkdown, exportMarkdown } =
     await import('../src/markdownConversion.mjs');
+  const { JSDOM } = require('jsdom');
+  const DOMParser = new JSDOM('').window.DOMParser;
   const result = convertFromMarkdown([
     '[[Project Notes#Setup|Read this]] and `[[literal]]`.',
     '',
@@ -501,6 +503,27 @@ test('Obsidian wikilinks and media embeds import to Wmdx resources outside code'
   assert.match(exported.markdown, /^!\[\[audio\/voice\.ogg\]\]$/m);
   assert.match(exported.markdown, /^!\[\[video\/clip\.mp4\]\]$/m);
   assert.match(exported.markdown, /^!\[\[manual\.pdf\]\]$/m);
+
+  for (const dialect of ['commonmark', 'gfm']) {
+    const standard = exportMarkdown(result.markdown, dialect);
+    assert.match(standard.markdown, /\[Read this\]\(Project%20Notes#Setup\)/);
+    assert.match(standard.markdown, /<figure><img src="assets\/diagram\.png"[^>]*width="640"><\/figure>/);
+    assert.match(standard.markdown, /<audio controls src="audio\/voice\.ogg"/);
+    assert.match(standard.markdown, /<video controls src="video\/clip\.mp4"/);
+    assert.match(standard.markdown, /\[manual\.pdf\]\(manual\.pdf "wmdx-attachment"\)/);
+    assert.match(standard.markdown, /^\\!\\\[\\\[Another Note\\\]\\\]$/m);
+    assert.ok(standard.warnings.some(warning => warning.includes('Obsidian note transclusion')));
+    assert.match(standard.markdown, /<\/figure>\n\n<audio/);
+    assert.match(standard.markdown, /<\/audio>\n\n<video/);
+    assert.match(standard.markdown, /<\/video>\n\n\[manual\.pdf\]/);
+
+    const reimported = convertFromMarkdown(standard.markdown, dialect, { DOMParser });
+    assert.match(reimported.markdown, /<figure><img src="assets\/diagram\.png"[^>]*width="640"><\/figure>/);
+    assert.match(reimported.markdown, /^\[voice\.ogg\]\(audio\/voice\.ogg "wmdx-audio"\)$/m);
+    assert.match(reimported.markdown, /^\[clip\.mp4\]\(video\/clip\.mp4 "wmdx-video"\)$/m);
+    assert.match(reimported.markdown, /^\[manual\.pdf\]\(manual\.pdf "wmdx-attachment"\)$/m);
+    assert.ok(reimported.warnings.some(warning => warning.includes('dimensions or alignment')));
+  }
 });
 
 test('Obsidian note transclusions export as warned literal text outside code', async () => {

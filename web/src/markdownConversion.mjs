@@ -3326,6 +3326,32 @@ function mapWmdxParagraphAlignments(lines, protectedLines, dialect) {
   return output;
 }
 
+function separateStandaloneHtmlMediaBlocks(lines) {
+  const output = [];
+  for (let index = 0; index < lines.length; index++) {
+    const line = String(lines[index] ?? '');
+    const isStandaloneMediaBlock =
+      /^<(?:figure|audio|video)\b[\s\S]*<\/(?:figure|audio|video)\s*>$/i
+        .test(line.trim());
+    if (
+      isStandaloneMediaBlock &&
+      output.length &&
+      output.at(-1).trim()
+    ) {
+      output.push('');
+    }
+    output.push(line);
+    if (
+      isStandaloneMediaBlock &&
+      index + 1 < lines.length &&
+      String(lines[index + 1] ?? '').trim()
+    ) {
+      output.push('');
+    }
+  }
+  return output;
+}
+
 export function exportMarkdown(source, dialect = 'commonmark') {
   if (!MARKDOWN_EXPORT_FORMATS.includes(dialect)) {
     throw new TypeError(`Unsupported Markdown export format: ${dialect}`);
@@ -3392,9 +3418,11 @@ export function exportMarkdown(source, dialect = 'commonmark') {
     }
     if (dialect === 'commonmark') {
       output = addCommonMarkHeadingAnchors(output, protectedLines);
-      return convertGfmTablesToCommonMarkHtml(output.join('\n')).split('\n');
+      return separateStandaloneHtmlMediaBlocks(
+        convertGfmTablesToCommonMarkHtml(output.join('\n')).split('\n')
+      );
     }
-    return output;
+    return separateStandaloneHtmlMediaBlocks(output);
   });
   return { markdown, warnings };
 }
