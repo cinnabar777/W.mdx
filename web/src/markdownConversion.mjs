@@ -2758,6 +2758,16 @@ function importCommonMarkReferenceHtml(body, Parser, warnings, footnoteDefinitio
     }
     return false;
   };
+  for (const heading of body.querySelectorAll('h1, h2, h3, h4, h5, h6')) {
+    const headingWalker = body.ownerDocument.createTreeWalker(heading, 4);
+    let headingText = headingWalker.nextNode();
+    while (headingText) {
+      if (!headingText.parentElement?.closest('code')) {
+        headingText.nodeValue = headingText.nodeValue.replace(/[ \t]*\r?\n[ \t]*/g, ' ');
+      }
+      headingText = headingWalker.nextNode();
+    }
+  }
   const textWalker = body.ownerDocument.createTreeWalker(body, 4);
   let textNode = textWalker.nextNode();
   let markerIndex = 0;
@@ -2769,7 +2779,9 @@ function importCommonMarkReferenceHtml(body, Parser, warnings, footnoteDefinitio
         leadingNbspMarkers.set(marker, '&nbsp;'.repeat(leading.length));
         textNode.nodeValue = marker + textNode.nodeValue.slice(leading.length);
       }
-      textNode.nodeValue = textNode.nodeValue.replace(/\r?\n/g, softBreakMarker);
+      if (/\S/.test(textNode.nodeValue)) {
+        textNode.nodeValue = textNode.nodeValue.replace(/\r?\n/g, softBreakMarker);
+      }
     }
     textNode = textWalker.nextNode();
   }
