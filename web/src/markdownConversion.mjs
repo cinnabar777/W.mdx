@@ -941,7 +941,7 @@ function convertHeadings(source, protectedLines = new Set()) {
         // Wmdx decimal markers are not recognized consistently inside Markdown
         // containers; retain the already-supported ATX spelling there.
         if (nestedInContainer) return;
-        const raw = source.slice(node.from, node.to);
+        const raw = source.slice(node.from, state.doc.lineAt(node.from).to);
         const closing = /^(#{1,6})[ \t]+([\s\S]*?)(?:[ \t]+#+[ \t]*)?$/.exec(raw);
         if (!closing) return;
         replacements.push({
@@ -2678,6 +2678,11 @@ const commonMarkReferenceHtmlAttributes = Object.freeze({
 });
 
 function isCommonMarkReferenceHtml(body) {
+  if (body.querySelector('img[src^="data:"], audio[src^="data:"], video[src^="data:"], source[src^="data:"], a[title="wmdx-attachment"]')) {
+    return false;
+  }
+  const comments = body.ownerDocument.createTreeWalker(body, 128);
+  if (comments.nextNode()) return false;
   for (const node of body.querySelectorAll('*')) {
     const tag = node.tagName.toLowerCase();
     if (!commonMarkReferenceHtmlElements.has(tag)) return false;
