@@ -4,11 +4,11 @@ const { JSDOM } = require('jsdom');
 const { convertFromHtml, exportMarkdown } = require('../src/markdownConversion.mjs');
 const { renderMarkdownHtml } = require('../src/htmlExport.mjs');
 
-function render(source, profile = 'wmdx') {
+function render(source, profile = 'wmdx', sourceDialect = profile) {
   const dom = new JSDOM('');
   return {
     dom,
-    result: renderMarkdownHtml(source, { profile, window: dom.window })
+    result: renderMarkdownHtml(source, { profile, sourceDialect, window: dom.window })
   };
 }
 
@@ -110,7 +110,8 @@ test('Obsidian math delimiters stay literal instead of becoming Markdown emphasi
 test('strict CommonMark HTML export preserves tables using valid raw HTML', () => {
   const { dom, result } = render(
     '| A | B |\n| --- | --- |\n| 1 | 2 |',
-    'commonmark'
+    'commonmark',
+    'wmdx'
   );
   const document = new dom.window.DOMParser().parseFromString(result.html, 'text/html');
 
