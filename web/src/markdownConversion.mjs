@@ -1206,7 +1206,7 @@ function htmlContainerBalance(source, tagName) {
   return balance;
 }
 
-function protectTopLevelMarkdownHtmlBlocks(source, format, Parser, warnings, { preserveRawHtmlContainers = false } = {}) {
+function protectTopLevelMarkdownHtmlBlocks(source, format, Parser, warnings, { preserveRawHtmlContainers = false, preserveUnsupportedHtmlAsRaw = false } = {}) {
   if (!Parser) return { source, restore: text => text };
   const tokens = marked.lexer(source, { gfm: format !== 'commonmark' });
   const replacements = [];
@@ -1352,7 +1352,8 @@ function protectTopLevelMarkdownHtmlBlocks(source, format, Parser, warnings, { p
       } else {
         try {
           const converted = convertFromHtml(raw, Parser, {
-            preserveRawHtmlContainers
+            preserveRawHtmlContainers,
+            preserveUnsupportedHtmlAsRaw
           });
           if (activeElement) {
             addWarning(warnings, `Active HTML element <${activeElement}> was omitted.`);
@@ -1645,7 +1646,8 @@ export function convertFromMarkdown(source, format = 'commonmark', options = {})
     : options.DOMParser ?? globalThis.DOMParser;
   const protectedHtml = protectTopLevelMarkdownHtmlBlocks(
     sourceText, format, htmlParser, warnings, {
-      preserveRawHtmlContainers: options.preserveRawHtmlContainers === true
+      preserveRawHtmlContainers: options.preserveRawHtmlContainers === true,
+      preserveUnsupportedHtmlAsRaw: options.preserveUnsupportedHtmlAsRaw === true
     }
   );
   const normalizedSource = normalizeStandardMarkdownMarkers(protectedHtml.source);
@@ -2110,14 +2112,50 @@ function htmlMediaResource(node) {
   return `[${markdownText(title)}](${markdownLinkDestination(source)} "wmdx-${tag}")`;
 }
 
+const commonMarkRawHtmlFallbackTags = new Set([
+  'div', 'section', 'table', 'del', 'ins', 'i', 'u', 'sup', 'sub', 'mark', 'kbd', 'textarea'
+]);
+const htmlElementsWithNativeImport = new Set([
+  'a', 'audio', 'video', 'details', 'figure', 'nav', 'aside', 'body',
+  'p', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'blockquote', 'ul', 'ol', 'li',
+  'pre', 'code', 'em', 'strong', 'br', 'hr', 'img', 'dl', 'dt', 'dd'
+]);
+
+function shouldPreserveRawHtmlElement(node, options = {}) {
+  if (!options.preserveUnsupportedHtmlAsRaw || node.nodeType !== 1) return false;
+  const tag = node.tagName.toLowerCase();
+  return commonMarkRawHtmlFallbackTags.has(tag) ||
+    (!htmlElementsWithNativeImport.has(tag) &&
+      !commonMarkReferenceHtmlElements.has(tag));
+}
+
+function shouldPreserveRawHtmlLink(node, options = {}) {
+  if (!options.preserveUnsupportedHtmlAsRaw) return false;
+  const href = node.getAttribute('href') ?? '';
+  const label = node.textContent ?? '';
+  return /[\s\\`<>()*]|[^\x00-\x7f]/.test(href) || /[*_~`]/.test(label);
+}
+
 function inlineHtmlNode(node, warnings, options = {}) {
   if (node.nodeType === 3) return markdownText(node.nodeValue, options);
   if (node.nodeType === 8) {
+    if (options.preserveUnsupportedHtmlAsRaw) {
+      const safeComment = String(node.nodeValue ?? '').replace(/--+/g, '- -');
+      return `<!--${safeComment}-->`;
+    }
     addWarning(warnings, 'HTML comments have no native Wmdx equivalent and were omitted.');
     return '';
   }
   if (node.nodeType !== 1) return '';
   const tag = node.tagName.toLowerCase();
+  if (['script', 'style', 'iframe', 'object', 'embed', 'form'].includes(tag)) {
+    addWarning(warnings, `Active HTML element <${tag}> was omitted.`);
+    return '';
+  }
+  if (shouldPreserveRawHtmlElement(node, options) ||
+      (tag === 'a' && shouldPreserveRawHtmlLink(node, options))) {
+    return serializeSafeHtmlBlock(node, warnings);
+  }
   if (tag === 'audio' || tag === 'video') return htmlMediaResource(node);
   if (node.hasAttribute('style') && !isGeneratedTocNode(node)) {
     addWarning(warnings, 'Unmapped inline CSS styling was ignored during HTML import.');
@@ -2220,11 +2258,22 @@ function serializeSafeHtmlBlock(node, warnings) {
 function htmlBlock(node, warnings, depth = 0, options = {}) {
   if (node.nodeType === 3) return markdownText(node.nodeValue, options);
   if (node.nodeType === 8) {
+    if (options.preserveUnsupportedHtmlAsRaw) {
+      const safeComment = String(node.nodeValue ?? '').replace(/--+/g, '- -');
+      return `<!--${safeComment}-->`;
+    }
     addWarning(warnings, 'HTML comments have no native Wmdx equivalent and were omitted.');
     return '';
   }
   if (node.nodeType !== 1) return '';
   const tag = node.tagName.toLowerCase();
+  if (['script', 'style', 'iframe', 'object', 'embed', 'form'].includes(tag)) {
+    addWarning(warnings, `Active HTML element <${tag}> was omitted.`);
+    return '';
+  }
+  if (shouldPreserveRawHtmlElement(node, options)) {
+    return serializeSafeHtmlBlock(node, warnings);
+  }
   if (node.hasAttribute('style') && !isGeneratedTocNode(node)) {
     const style = node.getAttribute('style') ?? '';
     const textJustifyValue =
@@ -2282,7 +2331,14 @@ function htmlBlock(node, warnings, depth = 0, options = {}) {
     return `.${level} ${content}`;
   }
   if (tag === 'p') {
+    if (
+      options.preserveUnsupportedHtmlAsRaw &&
+      Array.from(node.querySelectorAll('a')).some(anchor =>
+        shouldPreserveRawHtmlLink(anchor, options)
+      )
+    ) return serializeSafeHtmlBlock(node, warnings);
     const content = inline(options).trim();
+    if (!content && options.preserveUnsupportedHtmlAsRaw) return '<p></p>';
     if (/^<img\b[\s\S]*\btitle="[^"]*"[\s\S]*>$/.test(content)) {
       return `<p>${content}</p>`;
     }
@@ -2521,8 +2577,7 @@ function htmlBlock(node, warnings, depth = 0, options = {}) {
       )
     );
     if (
-      options.preserveRawHtmlContainers &&
-      (!hasHeaderCells || hasBlockCellContent)
+      options.preserveUnsupportedHtmlAsRaw
     ) return serializeSafeHtmlBlock(node, warnings);
     if (!rowNodes.length) return '';
     const normalized = rowNodes.map(() => []);
@@ -2846,14 +2901,16 @@ function isCommonMarkReferenceHtml(body) {
 }
 
 function importCommonMarkReferenceHtml(
-  body, Parser, warnings, footnoteDefinitions, preserveRawHtmlContainers = false
+  body, Parser, warnings, footnoteDefinitions, preserveRawHtmlContainers = false,
+  preserveUnsupportedHtmlAsRaw = false
 ) {
   const unorderedListMarkerState = { lastByIndent: new Map() };
   const orderedListDelimiters = new WeakMap();
   const blockOptions = {
     unorderedListMarkerState,
     preserveCodeBlockText: true,
-    preserveRawHtmlContainers
+    preserveRawHtmlContainers,
+    preserveUnsupportedHtmlAsRaw
   };
   const leadingNbspMarkers = new Map();
   const leadingTabMarkers = new Map();
@@ -3234,7 +3291,8 @@ function importCommonMarkReferenceHtml(
   );
   const imported = convertFromMarkdown(markdownSource, 'commonmark', {
     DOMParser: Parser,
-    preserveRawHtmlContainers
+    preserveRawHtmlContainers,
+    preserveUnsupportedHtmlAsRaw
   });
   const markdown = [imported.markdown, ...footnoteDefinitions]
     .filter(Boolean)
@@ -3251,7 +3309,8 @@ export function convertFromHtml(
     embeddedResources = null,
     baseLocation = '',
     resolveEmbeddedResource = null,
-    preserveRawHtmlContainers = true
+    preserveRawHtmlContainers = true,
+    preserveUnsupportedHtmlAsRaw = false
   } = {}
 ) {
   if (typeof Parser !== 'function') {
@@ -3271,13 +3330,14 @@ export function convertFromHtml(
   const hasHtmlComments = Boolean(commentWalker.nextNode());
   const footnotes = extractWmdxHtmlFootnotes(document, warnings);
   const body = document.body;
-  if (hasHtmlComments && !warnings.some(warning => warning.includes('HTML comments'))) {
+  if (hasHtmlComments && !preserveUnsupportedHtmlAsRaw && !warnings.some(warning => warning.includes('HTML comments'))) {
     addWarning(warnings, 'HTML comments have no native Wmdx equivalent and were omitted.');
   }
   const hasEmbeddedResources = embeddedResources && Object.keys(embeddedResources).length > 0;
   if (!hasEmbeddedResources && isCommonMarkReferenceHtml(body)) {
     return importCommonMarkReferenceHtml(
-      body, Parser, warnings, footnotes.definitions, preserveRawHtmlContainers
+      body, Parser, warnings, footnotes.definitions, preserveRawHtmlContainers,
+      preserveUnsupportedHtmlAsRaw
     );
   }
   const unorderedListMarkerState = { lastByIndent: new Map() };
@@ -3309,7 +3369,8 @@ export function convertFromHtml(
     }
     convertedBlocks.push(htmlBlock(node, warnings, 0, {
       unorderedListMarkerState,
-      preserveRawHtmlContainers
+      preserveRawHtmlContainers,
+      preserveUnsupportedHtmlAsRaw
     }));
   }
   const mainMarkdown = convertedBlocks

@@ -174,7 +174,7 @@ test('CommonMark 0.31.2 core Markdown exports to reference-equivalent HTML', asy
 test('Reference-rendered CommonMark HTML imports without semantic loss', async t => {
   const { Parser, HtmlRenderer } = require('commonmark');
   const { JSDOM } = require('jsdom');
-  const { convertFromHtml, exportMarkdown } = await import('../src/markdownConversion.mjs');
+  const { convertHtmlToMarkdownProfile } = await import('../src/markdownPaste.mjs');
   const parser = new Parser();
   const renderer = new HtmlRenderer();
   const window = new JSDOM('').window;
@@ -206,7 +206,7 @@ test('Reference-rendered CommonMark HTML imports without semantic loss', async t
 test('CommonMark raw HTML reference imports preserve safe rendered semantics per example', async t => {
   const { Parser, HtmlRenderer } = require('commonmark');
   const { JSDOM } = require('jsdom');
-  const { convertFromHtml, exportMarkdown } = await import('../src/markdownConversion.mjs');
+  const { convertHtmlToMarkdownProfile } = await import('../src/markdownPaste.mjs');
   const parser = new Parser();
   const renderer = new HtmlRenderer();
   const window = new JSDOM('').window;
@@ -229,21 +229,21 @@ test('CommonMark raw HTML reference imports preserve safe rendered semantics per
             if (name.startsWith('on') || unsafeUrl) element.removeAttribute(attribute.name);
           }
         }
-        const imported = convertFromHtml(referenceHtml, window.DOMParser);
-        const exported = exportMarkdown(imported.markdown, 'commonmark');
-        const actualHtml = renderer.render(parser.parse(exported.markdown));
+        const imported = convertHtmlToMarkdownProfile(
+          referenceHtml, 'commonmark', window.DOMParser
+        );
+        const actualHtml = renderer.render(parser.parse(imported.markdown));
 
         assert.doesNotMatch(
-          exported.markdown,
+          imported.markdown,
           /<\s*(?:script|style|iframe|object|embed|form)\b|\son[a-z]+\s*=|\s(?:href|src|xlink:href)\s*=\s*[\"']?\s*(?:javascript|vbscript|data):/i,
           'HTML import must not retain executable elements or unsafe attributes'
         );
         assert.equal(
           canonicalizeRenderedHtml(actualHtml, template),
           canonicalizeRenderedHtml(expectedSafe.innerHTML, template),
-          'Raw HTML import changed safe CommonMark semantics; import warnings: ' +
-            JSON.stringify(imported.warnings) + '; export warnings: ' +
-            JSON.stringify(exported.warnings) + '; imported Markdown: ' +
+          'Raw HTML import changed safe CommonMark semantics; warnings: ' +
+            JSON.stringify(imported.warnings) + '; imported Markdown: ' +
             JSON.stringify(imported.markdown) + '; reference HTML: ' +
             JSON.stringify(referenceHtml)
         );
