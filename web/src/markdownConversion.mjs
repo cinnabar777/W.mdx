@@ -2908,7 +2908,17 @@ function convertWmdxInlineToMarkdown(line, dialect, warnings) {
       protectedValues.push({ marker, value });
       return marker;
     };
-    let text = protectInlineMathSyntax(plainText, protect);
+    let text = String(plainText ?? '');
+    if (dialect !== 'obsidian') {
+      text = text.replace(/(?<!\\)!\[\[([^\]\n]+)\]\]/g, (_, target) => {
+        addWarning(
+          warnings,
+          'Obsidian note transclusion has no equivalent in this dialect; it was escaped and preserved as literal text.'
+        );
+        return `\\!\\[\\[${target}\\]\\]`;
+      });
+    }
+    text = protectInlineMathSyntax(text, protect);
     text = protectBareAutolinks(text, protect);
     text = text.replace(
       /(?<![\p{L}\p{N}\p{M}_\\])_([₀₁₂₃]?)(?![₀₁₂₃]_)(\S(?:[^\n]*?\S)?)_(?![\p{L}\p{N}\p{M}_])/gu,

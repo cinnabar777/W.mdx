@@ -503,6 +503,37 @@ test('Obsidian wikilinks and media embeds import to Wmdx resources outside code'
   assert.match(exported.markdown, /^!\[\[manual\.pdf\]\]$/m);
 });
 
+test('Obsidian note transclusions export as warned literal text outside code', async () => {
+  const { convertFromMarkdown, exportMarkdown } =
+    await import('../src/markdownConversion.mjs');
+  const imported = convertFromMarkdown([
+    '![[Another Note#Section|Alias]]',
+    '',
+    '`![[literal code]]`',
+    '',
+    '```md',
+    '![[literal fence]]',
+    '```'
+  ].join('\n'), 'obsidian');
+
+  for (const dialect of ['commonmark', 'gfm']) {
+    const exported = exportMarkdown(imported.markdown, dialect);
+    assert.match(
+      exported.markdown,
+      /^\\!\\\[\\\[Another Note#Section\|Alias\\\]\\\]$/m
+    );
+    assert.match(exported.markdown, /`!\[\[literal code\]\]`/);
+    assert.match(exported.markdown, /```md\n!\[\[literal fence\]\]\n```/);
+    assert.equal(
+      exported.warnings.filter(warning => warning.includes('Obsidian note transclusion')).length,
+      1
+    );
+
+    const roundTrip = convertFromMarkdown(exported.markdown, dialect);
+    assert.match(roundTrip.markdown, /Another Note#Section\|Alias/);
+  }
+});
+
 test('Markdown export uses media elements and attachment links for embedded resources', async () => {
   const { exportMarkdown } = await import('../src/markdownConversion.mjs');
   const result = exportMarkdown([
