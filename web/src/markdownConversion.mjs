@@ -2733,6 +2733,7 @@ function importCommonMarkReferenceHtml(body, Parser, warnings, footnoteDefinitio
   const orderedListDelimiters = new WeakMap();
   const blockOptions = { unorderedListMarkerState, preserveCodeBlockText: true };
   const leadingNbspMarkers = new Map();
+  const inlineCodeMarkers = new Map();
   const softBreakMarker = String.fromCharCode(0xE002) + 'WMDX_SOFT_BREAK' + String.fromCharCode(0xE003);
   const leadingNbspCharacter = String.fromCharCode(0x00A0);
   const blockStartTags = new Set([
@@ -2758,6 +2759,20 @@ function importCommonMarkReferenceHtml(body, Parser, warnings, footnoteDefinitio
     }
     return false;
   };
+  let inlineCodeIndex = 0;
+  for (const code of Array.from(body.querySelectorAll('code'))) {
+    if (code.closest('pre')) continue;
+    let marker = String.fromCharCode(0xE102) + 'WMDX_INLINE_CODE_' + (++inlineCodeIndex) + String.fromCharCode(0xE103);
+    while (body.textContent?.includes(marker)) marker += String.fromCharCode(0xE104);
+    inlineCodeMarkers.set(marker, formatMarkdownCodeSpan(code.textContent ?? ''));
+    code.replaceWith(body.ownerDocument.createTextNode(marker));
+  }
+  for (const lineBreak of body.querySelectorAll('br')) {
+    const next = lineBreak.nextSibling;
+    if (next?.nodeType === 3) {
+      next.nodeValue = next.nodeValue.replace(/^[ \t]*\r?\n[ \t]*/, ' ');
+    }
+  }
   for (const heading of body.querySelectorAll('h1, h2, h3, h4, h5, h6')) {
     const headingWalker = body.ownerDocument.createTreeWalker(heading, 4);
     let headingText = headingWalker.nextNode();
@@ -2805,9 +2820,19 @@ function importCommonMarkReferenceHtml(body, Parser, warnings, footnoteDefinitio
       return markdown ? '\n\n' + markdown + '\n\n' : '\n\n';
     }
   });
-  converter.escape = value => markdownText(value, {
-    escapeBlockSyntax: true,
-    wmdxSyntax: true
+  converter.escape = value => {
+    const source = String(value ?? '').split(softBreakMarker).join('\n');
+    return markdownText(source, {
+      escapeBlockSyntax: true,
+      wmdxSyntax: true
+    }).replace(/\r?\n/g, softBreakMarker);
+  };
+  converter.addRule('commonMarkEmphasis', {
+    filter: ['em', 'i'],
+    replacement: content => {
+      const safeContent = content.replace(/\*/g, character => String.fromCharCode(92) + character);
+      return '*' + safeContent + '*';
+    }
   });
   let literalBangMarker = String.fromCharCode(0xE000) + 'WMDX_LITERAL_BANG' + String.fromCharCode(0xE001);
   while (body.textContent?.includes(literalBangMarker)) {
@@ -2881,6 +2906,9 @@ function importCommonMarkReferenceHtml(body, Parser, warnings, footnoteDefinitio
   });
   let markdownSource = converter.turndown(body);
   markdownSource = markdownSource.split(literalBangMarker).join('\\!');
+  for (const [marker, replacement] of inlineCodeMarkers) {
+    markdownSource = markdownSource.split(marker).join(replacement);
+  }
   for (const [marker, replacement] of leadingNbspMarkers) {
     markdownSource = markdownSource.split(marker).join(replacement);
   }
