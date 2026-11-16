@@ -700,6 +700,7 @@ async function main() {
           icon: icon && { x: icon.x, right: icon.right, y: icon.y },
           title: title && { x: title.x, y: title.y },
           titleLineTop: titleLine?.getBoundingClientRect().top ?? null,
+          titleLineContentTop,
           source: window.editorBridge.getMarkdown(),
           selection: JSON.parse(window.editorBridge.getSelectionState())
         };
