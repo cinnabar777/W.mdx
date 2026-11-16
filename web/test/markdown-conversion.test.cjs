@@ -883,6 +883,19 @@ test('strict CommonMark converts GFM tables nested in blockquotes and lists to r
   }
 });
 
+test('HTML import escapes only ordered markers that can interrupt a paragraph', async () => {
+  const { convertFromHtml } = await import('../src/markdownConversion.mjs');
+  const { JSDOM } = require('jsdom');
+  const Parser = new JSDOM('').window.DOMParser;
+  const one = convertFromHtml('<p>Before\n1. literal text</p>', Parser);
+  const fourteen = convertFromHtml('<p>Before\n14. literal text</p>', Parser);
+
+  assert.match(one.markdown, /1\\\./);
+  assert.doesNotMatch(one.markdown, /\\1\./);
+  assert.match(fourteen.markdown, /14\./);
+  assert.doesNotMatch(fourteen.markdown, /\\14\./);
+});
+
 test('HTML import converts semantic content and omits active elements', async () => {
   const { JSDOM } = require('jsdom');
   const { convertFromHtml } = await import('../src/markdownConversion.mjs');

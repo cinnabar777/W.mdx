@@ -1870,7 +1870,8 @@ function pairedMarkdownDelimiterPositions(source, marker, { commonMarkEmphasis =
 function markdownText(value, {
   escapeBlockSyntax = true,
   tableCell = false,
-  wmdxSyntax = true
+  wmdxSyntax = true,
+  softBreakLineStarts = new Set()
 } = {}) {
   const source = String(value ?? '');
   const escapePositions = new Set();
@@ -1920,7 +1921,13 @@ function markdownText(value, {
   }
   if (escapeBlockSyntax) {
     addMatches(/(^|\n)([ \t]*)(#{1,6})(?=[ \t]|$)/gm, 3);
-    addMatches(/(^|\n)([ \t]*)(\d+|[A-Za-z]+)([.)])(?=[ \t])/gm, 4);
+    const numericListMarker = /(^|\n)([ \t]*)(\d+)([.)])(?=[ \t])/gm;
+    for (const match of source.matchAll(numericListMarker)) {
+      const lineStart = match.index + match[1].length;
+      if (softBreakLineStarts.has(lineStart) && Number(match[3]) !== 1) continue;
+      escapePositions.add(lineStart + match[2].length + match[3].length);
+    }
+    addMatches(/(^|\n)([ \t]*)([A-Za-z]+)([.)])(?=[ \t])/gm, 4);
     addMatches(/(^|\n)([ \t]*)([-+])(?=[ \t]|$)/gm, 3);
     addMatches(/(^|\n)([ \t]*)(>)(?=[ \t]|$)/gm, 3);
     addMatches(/(^|\n)([ \t]*)(\.)([1-6])(?=[ \t])/gm, 3);
@@ -2846,7 +2853,7 @@ function importCommonMarkReferenceHtml(body, Parser, warnings, footnoteDefinitio
   };
   let blockStartMarkerIndex = 0;
   const protectBlockStartsAfterBreak = value => value.replace(
-    /(\r?\n)( {0,3})(?=(?:#{1,6}(?:[ \t]|$)|>(?:[ \t]|$)|[-+*](?:[ \t]|$)|\d{1,9}[.)](?=[ \t])|\[[^\]\n]+\]:|[-*_]{3,}[ \t]*$|={1,}[ \t]*$))/gm,
+    /(\r?\n)( {0,3})(?=(?:#{1,6}(?:[ \t]|$)|>(?:[ \t]|$)|[-+*](?:[ \t]|$)|\[[^\]\n]+\]:|[-*_]{3,}[ \t]*$|={1,}[ \t]*$))/gm,
     (_, newline, indent) => {
       let marker = String.fromCharCode(0xE10B) +
         'WMDX_LITERAL_BLOCK_START_' + (++blockStartMarkerIndex) +
@@ -2959,10 +2966,21 @@ function importCommonMarkReferenceHtml(body, Parser, warnings, footnoteDefinitio
   converter.escape = value => {
     const input = String(value ?? '');
     const hasSoftBreak = input.includes(softBreakMarker);
-    const source = input.split(softBreakMarker).join('\n');
+    const softBreakLineStarts = new Set();
+    let source = '';
+    let cursor = 0;
+    let markerPosition = input.indexOf(softBreakMarker, cursor);
+    while (markerPosition >= 0) {
+      source += input.slice(cursor, markerPosition) + '\n';
+      softBreakLineStarts.add(source.length);
+      cursor = markerPosition + softBreakMarker.length;
+      markerPosition = input.indexOf(softBreakMarker, cursor);
+    }
+    source += input.slice(cursor);
     const escaped = markdownText(source, {
       escapeBlockSyntax: true,
-      wmdxSyntax: true
+      wmdxSyntax: true,
+      softBreakLineStarts
     });
     const escapeBlockStart = line => {
       const leading = /^ {0,3}/.exec(line)?.[0] ?? '';
