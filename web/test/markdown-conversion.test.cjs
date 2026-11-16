@@ -756,6 +756,32 @@ test('MHTML absolute same-document TOC URLs re-import as flavor-native heading l
   assert.doesNotMatch(obsidian.markdown, /appassets\.androidplatform\.net/);
 });
 
+test('percent-encoded same-document heading fragments resolve during HTML import', async () => {
+  const { JSDOM } = require('jsdom');
+  const { convertFromHtml, exportMarkdown } =
+    await import('../src/markdownConversion.mjs');
+  const Parser = new JSDOM('').window.DOMParser;
+  const baseLocation = 'https://appassets.androidplatform.net/assets/www/document.html';
+  const imported = convertFromHtml(
+    '<nav class="toc-container"><a href="' + baseLocation +
+      '#project%2Dsetup">Encoded target</a></nav>' +
+      '<h1 id="project-setup">Project Setup</h1>',
+    Parser,
+    { baseLocation }
+  );
+
+  assert.deepEqual(imported.warnings, []);
+  assert.match(imported.markdown, /\[#Project Setup\|Encoded target\|\|\]/);
+  assert.match(
+    exportMarkdown(imported.markdown, 'obsidian').markdown,
+    /\[\[#Project Setup\|Encoded target\]\]/
+  );
+  assert.match(
+    exportMarkdown(imported.markdown, 'commonmark').markdown,
+    /\[Encoded target\]\(#project-setup\)/
+  );
+});
+
 test('HTML conversion preserves link titles and reports unrepresentable CSS loss', async () => {
   const { JSDOM } = require('jsdom');
   const { convertFromHtml } = await import('../src/markdownConversion.mjs');
