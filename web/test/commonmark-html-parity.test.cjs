@@ -167,7 +167,9 @@ test('Reference-rendered CommonMark HTML imports without semantic loss', async t
           canonicalizeRenderedHtml(expectedHtml, template),
           'HTML import changed CommonMark semantics; import warnings: ' +
             JSON.stringify(imported.warnings) + '; export warnings: ' +
-            JSON.stringify(exported.warnings)
+            JSON.stringify(exported.warnings) + '; imported Markdown: ' +
+            JSON.stringify(imported.markdown) + '; exported Markdown: ' +
+            JSON.stringify(exported.markdown)
         );
       }
     );
