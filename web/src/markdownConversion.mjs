@@ -261,8 +261,11 @@ function protectCodeFences(source, transformLines) {
       }
       continue;
     }
-    const opening = /^ {0,3}(`{3,}|~{3,})/.exec(line);
-    if (opening) {
+    const opening = /^ {0,3}(`{3,}|~{3,})(.*)$/.exec(line);
+    if (
+      opening &&
+      !(opening[1][0] === '`' && opening[2].includes('`'))
+    ) {
       fence = { character: opening[1][0], length: opening[1].length };
       protectedLines.add(index);
       continue;
@@ -1332,6 +1335,20 @@ function protectRawHtmlBlockLines(lines, protectedLines) {
   }
 }
 
+function restoreDisabledHtmlTaskItem(line) {
+  const match = /^((?:[ \t]*>\s*)*[ \t]*)([-+*]|\d+[.)])\s+<input\b([^>]*)>(?:[ \t]+(.*))?[ \t]*$/i
+    .exec(line);
+  if (!match) return null;
+  const attributes = match[3];
+  if (!/(?:^|\s)type\s*=\s*(?:"checkbox"|'checkbox'|checkbox)(?=\s|$)/i.test(attributes) ||
+      !/(?:^|\s)disabled(?:\s|=|$)/i.test(attributes)) {
+    return null;
+  }
+  const checked = /(?:^|\s)checked(?:\s|=|$)/i.test(attributes);
+  const text = (match[4] ?? '').trimEnd();
+  return `${match[1]}${match[2]} [${checked ? 'x' : ' '}]${text ? ` ${text}` : ''}`;
+}
+
 function normalizeCommonMarkReferenceLabel(value) {
   return String(value ?? '')
     .replace(/\\([!"#$%&'()*+,\-./:;<=>?@[\\\]^_`{|}~])/g, '$1')
@@ -1385,7 +1402,7 @@ function protectObsidianCommonMarkReferenceCollisions(
 }
 
 function protectBareAutolinks(text, protect) {
-  return text.replace(/(?:https?:\/\/|ftp:\/\/|www\.)[^\s<>]+/gi, protect);
+  return text.replace(/(?:[a-z][a-z\d+.-]*:\/\/|www\.)[^\s<>]+/gi, protect);
 }
 
 function escapeDialectSpecificWmdxSyntax(line, format, commonMarkReferences = new Set()) {
@@ -1508,6 +1525,14 @@ export function convertFromMarkdown(source, format = 'commonmark', options = {})
     const rawHtmlBlockState = { tags: [], comment: false };
     return lines.map((line, index) => {
       if (headingProtectedLines.has(index)) return line;
+      const restoredTask = restoreDisabledHtmlTaskItem(line);
+      if (restoredTask !== null) {
+        addWarning(
+          warnings,
+          'A disabled HTML checkbox in a Markdown list was restored as an editable task item.'
+        );
+        return restoredTask;
+      }
       if (isRawHtmlBlockLine(line, rawHtmlBlockState)) {
         if (!rawHtmlBlockState.comment &&
             !line.includes('<!--') &&
@@ -2531,6 +2556,12 @@ function convertWmdxCallouts(lines, dialect, warnings, protectedLines) {
     } else if (dialect === 'gfm' &&
       ['note', 'info', 'tip', 'important', 'warning', 'caution'].includes(type)) {
       const mapped = ['info', 'note'].includes(type) ? 'NOTE' : type.toUpperCase();
+      if (type === 'info') {
+        addWarning(
+          warnings,
+          'GFM has NOTE but no INFO alert; an Obsidian info callout returns as note.'
+        );
+      }
       const quoted = bodyText.split('\n').map(line => `> ${line}`).join('\n');
       const titleLine = title ? `> ${emphasizeTitle(title)}\n` : '';
       output[index] = `> [!${mapped}]\n${titleLine}${quoted}`;
@@ -2867,7 +2898,9 @@ function mapWmdxTaskItems(lines, protectedLines, dialect, warnings) {
   const output = lines.map((line, index) => {
     if (protectedLines.has(index)) return line;
     const wmdxTask = /^([ \t]*)\[([ xX])\][ \t]+(.*)$/.exec(line);
-    const markdownTask = /^([ \t]*)([-+*]|\d+[.)])[ \t]+\[([ xX])\][ \t]+(.*)$/.exec(line);
+    const markdownTask =
+      /^((?:[ \t]*>\s*)*[ \t]*)([-+*]|\d+[.)])[ \t]+\[([ xX])\][ \t]+(.*)$/
+        .exec(line);
     const task = wmdxTask
       ? { indent: wmdxTask[1], marker: '-', checked: wmdxTask[2], text: wmdxTask[3] }
       : markdownTask

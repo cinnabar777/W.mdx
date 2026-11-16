@@ -371,6 +371,29 @@ test('Obsidian and GFM callouts become native Wmdx callouts with indented bodies
   assert.match(customObsidianCallout.markdown, /^  Its body is retained\.$/m);
 });
 
+test('Obsidian info callout warns when GFM normalizes it to NOTE', async () => {
+  const { convertFromMarkdown, exportMarkdown } =
+    await import('../src/markdownConversion.mjs');
+  const imported = convertFromMarkdown(
+    '> [!info] Header\n> Body',
+    'obsidian'
+  );
+  const gfm = exportMarkdown(imported.markdown, 'gfm');
+  const returned = convertFromMarkdown(gfm.markdown, 'gfm');
+  const obsidian = exportMarkdown(returned.markdown, 'obsidian');
+
+  assert.equal(gfm.markdown, '> [!NOTE]\n> **Header**\n> Body\n');
+  assert.deepEqual(gfm.warnings, [
+    'GFM has NOTE but no INFO alert; an Obsidian info callout returns as note.'
+  ]);
+  assert.equal(
+    obsidian.markdown,
+    '> [!note]\n> **Header**\n> Body\n\n\n'
+  );
+  assert.deepEqual(returned.warnings, []);
+  assert.deepEqual(obsidian.warnings, []);
+});
+
 test('CommonMark wikilink-like text stays literal when exported to Obsidian', async () => {
   const { convertFromMarkdown, exportMarkdown } =
     await import('../src/markdownConversion.mjs');

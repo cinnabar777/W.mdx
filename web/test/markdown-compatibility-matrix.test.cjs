@@ -553,6 +553,68 @@ test('GFM tasks, strike, and aligned tables survive HTML and Markdown round trip
   );
 });
 
+test('CommonMark checkbox HTML round-trips to editable task markers', async () => {
+  const { convertFromMarkdown, exportMarkdown } =
+    await import('../src/markdownConversion.mjs');
+  const source = [
+    '- <input type="checkbox" disabled> Unchecked',
+    '- <input type="checkbox" disabled checked> Checked',
+    '> - <input type="checkbox" disabled> Quoted unchecked',
+    '> - <input type="checkbox" disabled checked> Quoted checked'
+  ].join('\n');
+  const expected = [
+    '- [ ] Unchecked',
+    '- [x] Checked',
+    '> - [ ] Quoted unchecked',
+    '> - [x] Quoted checked'
+  ].join('\n');
+  const imported = convertFromMarkdown(source, 'commonmark');
+  const returned = exportMarkdown(imported.markdown, 'obsidian');
+  const commonMarkRoundTrip = exportMarkdown(imported.markdown, 'commonmark');
+
+  assert.equal(imported.markdown, expected);
+  assert.deepEqual(imported.warnings, [
+    'A disabled HTML checkbox in a Markdown list was restored as an editable task item.'
+  ]);
+  assert.equal(returned.markdown, expected);
+  assert.deepEqual(returned.warnings, []);
+  assert.equal(commonMarkRoundTrip.markdown, source);
+  assert.deepEqual(commonMarkRoundTrip.warnings, [
+    'CommonMark has no task-list extension; checkboxes use inline HTML.'
+  ]);
+});
+
+test('inline triple-backtick spans do not hide following Markdown conversions', async () => {
+  const { convertFromMarkdown, exportMarkdown } =
+    await import('../src/markdownConversion.mjs');
+  const { renderMarkdownHtml } = await import('../src/htmlExport.mjs');
+  const dom = new JSDOM('');
+  const source = '```中文测试``` is inline code.\n\n- [ ] Later task';
+  const imported = convertFromMarkdown(source, 'gfm');
+  const commonmark = exportMarkdown(imported.markdown, 'commonmark');
+  const before = renderMarkdownHtml(source, {
+    profile: 'gfm',
+    window: dom.window
+  });
+  const after = renderMarkdownHtml(commonmark.markdown, {
+    profile: 'commonmark',
+    window: dom.window
+  });
+
+  assert.equal(imported.markdown, source);
+  assert.equal(
+    commonmark.markdown,
+    '```中文测试``` is inline code.\n\n- <input type="checkbox" disabled> Later task'
+  );
+  assert.deepEqual(commonmark.warnings, [
+    'CommonMark has no task-list extension; checkboxes use inline HTML.'
+  ]);
+  assert.equal(
+    canonicalizeHtml(after.html, dom.window.document),
+    canonicalizeHtml(before.html, dom.window.document)
+  );
+});
+
 test('Obsidian callout, wikilink, highlight, and footnote survive HTML round trip', async () => {
   const { convertFromMarkdown, convertFromHtml, exportMarkdown } =
     await import('../src/markdownConversion.mjs');
@@ -712,6 +774,29 @@ test('Curated Obsidian syntax cases preserve semantics through Wmdx round trips'
         canonicalizeHtml(before.html, document),
         `${example.feature} preserves its rendered meaning`
       );
+    });
+  }
+});
+
+test('Obsidian custom-protocol links preserve query equals signs across flavors', async t => {
+  const source = '[Note](obsidian://open?vault=MainVault&file=Note.md)';
+  const { convertFromMarkdown, exportMarkdown } =
+    await import('../src/markdownConversion.mjs');
+
+  for (const target of ['commonmark', 'gfm', 'obsidian']) {
+    await t.test(target, () => {
+      const imported = convertFromMarkdown(source, 'obsidian');
+      const exported = exportMarkdown(imported.markdown, target);
+      const returned = convertFromMarkdown(exported.markdown, target);
+      const backToObsidian = exportMarkdown(returned.markdown, 'obsidian');
+
+      assert.deepEqual(imported.warnings, []);
+      assert.deepEqual(exported.warnings, []);
+      assert.equal(imported.markdown, source);
+      assert.equal(exported.markdown, source);
+      assert.equal(backToObsidian.markdown, source);
+      assert.deepEqual(returned.warnings, []);
+      assert.deepEqual(backToObsidian.warnings, []);
     });
   }
 });
