@@ -3265,11 +3265,38 @@ export function convertFromHtml(
     );
   }
   const unorderedListMarkerState = { lastByIndent: new Map() };
-  const mainMarkdown = Array.from(body.childNodes)
-    .map(node => htmlBlock(node, warnings, 0, {
+  const bodyNodes = Array.from(body.childNodes);
+  const convertedBlocks = [];
+  for (let index = 0; index < bodyNodes.length; index += 1) {
+    const node = bodyNodes[index];
+    if (
+      preserveRawHtmlContainers &&
+      node.nodeType === 1 &&
+      ['div', 'section'].includes(node.tagName.toLowerCase())
+    ) {
+      let rawBlock = serializeSafeHtmlBlock(node, warnings);
+      let nextIndex = index + 1;
+      let appendedRawText = false;
+      while (
+        bodyNodes[nextIndex]?.nodeType === 3 &&
+        !/\n[ \t]*\n/.test(bodyNodes[nextIndex].nodeValue ?? '')
+      ) {
+        rawBlock += escapeHtml(bodyNodes[nextIndex].nodeValue ?? '');
+        nextIndex += 1;
+        appendedRawText = true;
+      }
+      if (appendedRawText) {
+        convertedBlocks.push(rawBlock);
+        index = nextIndex - 1;
+        continue;
+      }
+    }
+    convertedBlocks.push(htmlBlock(node, warnings, 0, {
       unorderedListMarkerState,
       preserveRawHtmlContainers
-    }))
+    }));
+  }
+  const mainMarkdown = convertedBlocks
     .filter(Boolean)
     .join('\n\n')
     .replace(/\n{3,}/g, '\n\n')
