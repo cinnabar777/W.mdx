@@ -5843,24 +5843,31 @@ function markdownHtmlHasVisibleContent(html) {
 }
 
 class MarkdownHtmlPreviewWidget extends WidgetType {
-  constructor(html, from, to) {
+  constructor(html, from, to, allowSyntaxExposure) {
     super();
     this.html = html;
     this.from = from;
     this.to = to;
+    this.allowSyntaxExposure = allowSyntaxExposure;
   }
 
   eq(other) {
     return other instanceof MarkdownHtmlPreviewWidget &&
-      other.html === this.html && other.from === this.from && other.to === this.to;
+      other.html === this.html && other.from === this.from && other.to === this.to &&
+      other.allowSyntaxExposure === this.allowSyntaxExposure;
   }
 
   toDOM(view) {
     const wrapper = document.createElement('div');
     wrapper.className = 'cm-markdown-html-preview';
-    wrapper.setAttribute('aria-label', 'Rendered HTML. Tap to edit its Markdown source.');
+    wrapper.setAttribute(
+      'aria-label',
+      this.allowSyntaxExposure
+        ? 'Rendered HTML. Source exposure follows the editor setting.'
+        : 'Rendered HTML content.'
+    );
     wrapper.setAttribute('data-html-source-from', String(this.from));
-    wrapper.tabIndex = 0;
+    if (this.allowSyntaxExposure) wrapper.tabIndex = 0;
     wrapper.style.cssText =
       'display:block;max-width:100%;overflow-x:auto;box-sizing:border-box;margin:0.25em 0;color:inherit;font:inherit;';
     wrapper.innerHTML = this.html;
@@ -5880,11 +5887,13 @@ class MarkdownHtmlPreviewWidget extends WidgetType {
       });
       view.focus();
     };
-    wrapper.addEventListener('pointerdown', revealSource, true);
-    wrapper.addEventListener('keydown', event => {
-      if (event.key !== 'Enter' && event.key !== ' ') return;
-      revealSource(event);
-    });
+    if (this.allowSyntaxExposure) {
+      wrapper.addEventListener('pointerdown', revealSource, true);
+      wrapper.addEventListener('keydown', event => {
+        if (event.key !== 'Enter' && event.key !== ' ') return;
+        revealSource(event);
+      });
+    }
     return wrapper;
   }
 
@@ -5898,7 +5907,8 @@ function buildMarkdownHtmlRenderValue(state) {
   const profile = ['wmdx', 'commonmark', 'gfm', 'obsidian'].includes(currentMarkdownProfile)
     ? currentMarkdownProfile
     : 'commonmark';
-  const cacheKey = [currentEditorMode, currentModePreference, profile].join('|');
+  const syntaxExposureScope = activeSyntaxExposureScope;
+  const cacheKey = [currentEditorMode, currentModePreference, syntaxExposureScope, profile].join('|');
   if (stateCache?.has(cacheKey)) return stateCache.get(cacheKey);
   if (!stateCache) {
     stateCache = new Map();
@@ -5911,14 +5921,22 @@ function buildMarkdownHtmlRenderValue(state) {
   const renderedRegions = [];
   const decorations = [];
   const selection = state.selection.main;
+  const syntaxExposureEnabled = currentModePreference !== 'source' &&
+    currentModePreference !== 'legacy_wysiwyg' &&
+    syntaxExposureScope !== 'hidden';
+  const exposureLayout = syntaxExposureEnabled ? markdownRenderPlan(state).semantic : null;
   for (const region of candidates) {
-    if (selectionTouchesMarkdownHtmlRegion(selection, region)) continue;
+    if (syntaxExposureEnabled && isSyntaxRangeActiveForCurrentExposure(
+      selection, state.doc, exposureLayout, region.from, region.to
+    )) continue;
     const source = state.doc.sliceString(region.from, region.to);
     const html = renderMarkdownHtmlRegion(source, profile);
     if (!html || !markdownHtmlHasVisibleContent(html)) continue;
     decorations.push(
       Decoration.replace({
-        widget: new MarkdownHtmlPreviewWidget(html, region.from, region.to),
+        widget: new MarkdownHtmlPreviewWidget(
+          html, region.from, region.to, syntaxExposureEnabled
+        ),
         block: true
       }).range(region.from, region.to)
     );
@@ -5931,6 +5949,7 @@ function buildMarkdownHtmlRenderValue(state) {
     renderedRegions,
     mode: currentEditorMode,
     modePreference: currentModePreference,
+    syntaxExposureScope,
     profile
   };
   stateCache.set(cacheKey, value);
@@ -6120,6 +6139,7 @@ const markdownHtmlRenderField = StateField.define({
       : 'commonmark';
     const modeChanged = current.mode !== currentEditorMode ||
       current.modePreference !== currentModePreference ||
+      current.syntaxExposureScope !== activeSyntaxExposureScope ||
       current.profile !== activeProfile;
     if (
       tr.docChanged ||
@@ -6127,7 +6147,7 @@ const markdownHtmlRenderField = StateField.define({
       modeChanged ||
       syntaxTree(tr.startState) !== syntaxTree(tr.state)
     ) return buildMarkdownHtmlRenderValue(tr.state);
-    if (tr.selection !== undefined && current.candidates.some(region =>
+    if (current.syntaxExposureScope !== 'hidden' && tr.selection !== undefined && current.candidates.some(region =>
       selectionTouchesMarkdownHtmlRegion(tr.startState.selection.main, region) ||
       selectionTouchesMarkdownHtmlRegion(tr.state.selection.main, region)
     )) return buildMarkdownHtmlRenderValue(tr.state);
@@ -6150,7 +6170,9 @@ export const persistentLayoutField = StateField.define({
       currentEditorMode === 'live_preview' &&
       activeSyntaxExposureScope !== 'hidden' &&
       tr.selection !== undefined;
-    const htmlExposureSelectionChanged = tr.selection !== undefined &&
+    const htmlExposureSelectionChanged = activeSyntaxExposureScope !== 'hidden' &&
+      currentModePreference !== 'source' &&
+      tr.selection !== undefined &&
       buildMarkdownHtmlRenderValue(tr.startState).candidates.some(region =>
         selectionTouchesMarkdownHtmlRegion(tr.startState.selection.main, region) ||
         selectionTouchesMarkdownHtmlRegion(tr.state.selection.main, region)

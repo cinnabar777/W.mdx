@@ -22,7 +22,7 @@ async function waitForDomCondition(window, predicate, message, timeoutMs = 5000)
   assert.ok(predicate(), message);
 }
 
-test('raw HTML in Markdown renders safely in WYSIWYG modes and reveals source when tapped', async () => {
+test('raw HTML respects WYSIWYG syntax-exposure settings', async () => {
   const html = fs.readFileSync(path.join(appAssets, 'index.html'), 'utf8');
   const bundle = fs.readFileSync(path.join(appAssets, 'bundle.js'), 'utf8');
   const errors = [];
@@ -86,36 +86,56 @@ test('raw HTML in Markdown renders safely in WYSIWYG modes and reveals source wh
       'Safe text after the HTML.'
     ].join('\n');
 
-    for (const mode of ['wysiwyg', 'live_preview']) {
-      window.editorBridge.setMarkdown(source);
-      await new Promise(resolve => setTimeout(resolve, 20));
-      await window.editorBridge.setEditorMode(mode);
-      await new Promise(resolve => setTimeout(resolve, 20));
-      const safeTextPosition = source.indexOf('Safe text after the HTML.');
-      window.editorBridge.setSelectionState({ anchor: safeTextPosition, head: safeTextPosition });
-      await new Promise(resolve => setTimeout(resolve, 20));
-      const previews = [...window.document.querySelectorAll('.cm-markdown-html-preview')];
-      assert.equal(previews.length, 3, mode + ' renders the block, inline, and inert script regions');
-      assert.ok(previews.some(preview => preview.querySelector('.raw-html-block')),
-        mode + ' renders HTML block elements: ' + previews.map(preview => preview.innerHTML).join(' || '));
-      assert.ok(previews.some(preview => preview.querySelector('kbd')),
-        mode + ' renders inline HTML elements: ' + previews.map(preview => preview.innerHTML).join(' || '));
-      assert.equal(previews.some(preview => preview.querySelector('script')), false,
-        mode + ' never inserts active script elements');
-      assert.equal(window.__wmdxRawHtmlExecuted, undefined, mode + ' does not execute raw HTML scripts');
-      assert.equal(window.editorBridge.getMarkdown(), source, mode + ' keeps Markdown unchanged');
+    window.editorBridge.setMarkdown(source);
+    await new Promise(resolve => setTimeout(resolve, 20));
+    await window.editorBridge.setEditorMode('rendered');
+    window.editorBridge.setMarkdownSyntaxExposure('hidden');
+    await new Promise(resolve => setTimeout(resolve, 20));
+    assert.equal(window.editorBridge.getEditorMode(), 'rendered', 'the user-facing editor mode is WYSIWYG');
+    assert.equal(window.editorBridge.getSyntaxExposureScope(), 'hidden', 'syntax exposure starts hidden');
+    const wysiwygPreviews = [...window.document.querySelectorAll('.cm-markdown-html-preview')];
+    assert.equal(wysiwygPreviews.length, 3, 'WYSIWYG renders block, inline, and inert script HTML');
+    assert.ok(wysiwygPreviews.some(preview => preview.querySelector('.raw-html-block')),
+      'WYSIWYG renders HTML block elements');
+    assert.ok(wysiwygPreviews.some(preview => preview.querySelector('kbd')),
+      'WYSIWYG renders inline HTML elements');
+    assert.equal(wysiwygPreviews.some(preview => preview.querySelector('script')), false,
+      'WYSIWYG never inserts active script elements');
+    assert.equal(window.__wmdxRawHtmlExecuted, undefined, 'WYSIWYG does not execute raw HTML scripts');
+    wysiwygPreviews.find(preview => preview.querySelector('.raw-html-block'))
+      .dispatchEvent(new window.MouseEvent('pointerdown', { bubbles: true, cancelable: true }));
+    await new Promise(resolve => setTimeout(resolve, 20));
+    assert.equal(window.document.querySelectorAll('.cm-markdown-html-preview').length, 3,
+      'tapping WYSIWYG HTML does not expose its source when syntax exposure is hidden');
+    assert.equal(sourceText(window.document.querySelector('.cm-content')).includes('<div class="raw-html-block">'), false,
+      'WYSIWYG keeps the block rendered at the caret');
+    assert.equal(window.editorBridge.getMarkdown(), source, 'WYSIWYG interaction leaves Markdown unchanged');
 
-      previews[0].dispatchEvent(new window.MouseEvent('pointerdown', {
-        bubbles: true,
-        cancelable: true
-      }));
-      await new Promise(resolve => setTimeout(resolve, 20));
-      assert.equal(window.document.querySelectorAll('.cm-markdown-html-preview').length, 2,
-        mode + ' reveals the tapped block while other HTML previews remain rendered');
-      assert.ok(sourceText(window.document.querySelector('.cm-content')).includes('<div class="raw-html-block">'),
-        mode + ' exposes the tapped block source in the editor');
-      assert.equal(window.editorBridge.getMarkdown(), source, mode + ' source reveal does not mutate text');
-    }
+    window.editorBridge.setMarkdownSyntaxExposure('caret');
+    await waitForDomCondition(window,
+      () => sourceText(window.document.querySelector('.cm-content')).includes('<div class="raw-html-block">'),
+      'caret exposure reveals the raw HTML under the caret');
+    assert.equal(window.editorBridge.getEditorMode(), 'rendered', 'syntax exposure does not create a second user-facing mode');
+    assert.equal(window.editorBridge.getSyntaxExposureScope(), 'caret');
+    assert.equal(window.document.querySelectorAll('.cm-markdown-html-preview').length, 2,
+      'caret exposure reveals only the HTML region under the caret');
+
+    const safeTextPosition = source.indexOf('Safe text after the HTML.');
+    window.editorBridge.setSelectionState({ anchor: safeTextPosition, head: safeTextPosition });
+    await waitForDomCondition(window,
+      () => window.document.querySelectorAll('.cm-markdown-html-preview').length === 3,
+      'the HTML previews render again after the caret leaves their source');
+    const exposedSettingPreviews = [...window.document.querySelectorAll('.cm-markdown-html-preview')];
+    assert.ok(exposedSettingPreviews.some(preview => preview.querySelector('.raw-html-block')),
+      'HTML block rendering remains available with caret syntax exposure enabled');
+    const blockPreview = exposedSettingPreviews.find(preview => preview.querySelector('.raw-html-block'));
+    blockPreview.dispatchEvent(new window.MouseEvent('pointerdown', { bubbles: true, cancelable: true }));
+    await waitForDomCondition(window,
+      () => sourceText(window.document.querySelector('.cm-content')).includes('<div class="raw-html-block">'),
+      'moving the caret into the tapped region exposes source under the enabled setting');
+    assert.equal(window.document.querySelectorAll('.cm-markdown-html-preview').length, 2,
+      'other HTML regions remain rendered while the selected region exposes syntax');
+    assert.equal(window.editorBridge.getMarkdown(), source, 'syntax exposure never mutates Markdown');
 
     await window.editorBridge.setEditorMode('source');
     const content = window.document.querySelector('.cm-content');

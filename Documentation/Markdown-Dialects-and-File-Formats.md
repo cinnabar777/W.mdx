@@ -8,7 +8,7 @@ Wmdx keeps one Markdown source and parses CommonMark core syntax, selected GFM e
 
 | Editor surface | Behavior |
 | --- | --- |
-| Rendered Markdown editor | One shared block/layout pipeline. A syntax-exposure setting controls whether syntax stays hidden, appears around the caret, or expands to the active line/block. WYSIWYG and Live Preview are exposure presets, not separate renderers. |
+| Rendered Markdown editor | WYSIWYG is the sole rendered editor. Its syntax-exposure setting can hide syntax or reveal it at the caret, line, or block; Source/Code remains a separate text editor. |
 | Source/Code editor | Non-Markdown text files open in Source/Code automatically; Markdown files use the selected Markdown view. The editor provides filename-based highlighting for Markdown, JavaScript/TypeScript/JSX/TSX, JSON, YAML, Python, SQL, Java, Rust, C/C++, Go, PHP, HTML/XML/SVG, and CSS. A Menu action can override the language per document; unknown extensions default to plain text. All source characters remain visible; Markdown blocks, media, and tables are not rendered as document widgets. Callout bodies are never folded. |
 
 JSON files are not reformatted when opened. In Source/Code, **Menu → Format JSON** validates the document before re-indenting it with two spaces. Formatting changes whitespace only: property order, duplicate keys, and the original spelling of scalar values are preserved. Invalid JSON is left untouched and reports the approximate error line and column; the edit can be undone.
@@ -147,18 +147,18 @@ Conversion is deliberately explicit and conservative:
 - Wmdx audio/video embeds export as semantic HTML media elements; other embedded resources export as attachment links. Obsidian exports supported embeds with `![[...]]` where its syntax retains the resource details.
 - Wmdx superscript imports from semantic HTML `<sup>` and exports to `<sup>` in CommonMark, GFM, and Obsidian documents.
 - Wmdx strikethrough exports as CommonMark `<del>` and stays `~~text~~` in GFM and Obsidian.
-- Explicit Markdown-dialect conversion maps inline raw HTML emphasis (`<strong>`, `<b>`, `<em>`, `<i>`), strike, subscript, superscript, and highlight to Wmdx syntax where supported. This is not full raw-HTML rendering: unconverted Markdown containing HTML blocks, links, or other tags can still differ from a standards-compliant browser renderer and remains an open compatibility gate.
+- Explicit Markdown-dialect conversion maps inline raw HTML emphasis (`<strong>`, `<b>`, `<em>`, `<i>`), strike, subscript, superscript, and highlight to Wmdx syntax where supported. Raw HTML blocks and inline fragments render in WYSIWYG; source visibility follows the syntax-exposure setting, while Source remains literal.
 - GFM pipe tables are preserved in CommonMark output with a warning. Pipe tables are not defined by CommonMark, so a strict CommonMark renderer may show the source as text instead of a table.
 - YAML frontmatter is preserved verbatim and is not interpreted as Wmdx metadata; importing it warns that properties remain unparsed, and exporting to CommonMark/GFM warns that those formats do not standardize frontmatter.
 - Obsidian heading/block transclusion, plugin syntax, math, Mermaid, semantic tags, and full vault resolution are not supported.
 
-The pinned CommonMark 0.31.2 corpus contains 652 examples. All 575 non-HTML examples are imported, exported, and compared for rendered semantics using the official reference renderer. All 21 non-HTML GFM 0.29 extension examples are compared with upstream expected HTML semantics in WYSIWYG, with source preservation checked. Seven curated Obsidian WYSIWYG fixtures cover wikilinks, heading links, highlights, image embeds, callouts, tasks, and footnotes. Raw HTML cases are excluded by the no-active-HTML policy; the GFM and Obsidian fixtures do not certify full dialect conformance. These checks do **not** certify complete CommonMark, GFM, Obsidian, or HTML conformance.
+The pinned CommonMark 0.31.2 corpus contains 652 examples. All 575 non-HTML examples are imported, exported, and compared for rendered semantics using the official reference renderer. Raw HTML has separate import/export coverage and a focused editor regression for block and inline rendering, caret-based syntax exposure, literal Source display, and script non-execution; this does not yet prove every raw-HTML example in every editor context. All 21 non-HTML GFM 0.29 extension examples are compared with upstream expected HTML semantics in WYSIWYG, with source preservation checked. Seven curated Obsidian WYSIWYG fixtures cover wikilinks, heading links, highlights, image embeds, callouts, tasks, and footnotes. These checks do **not** certify complete CommonMark, GFM, Obsidian, or HTML conformance.
 
 The linter checks common structural errors such as unclosed code fences, unresolved references/footnotes, malformed Wmdx resource fields, table row widths, empty callouts, active HTML, and Obsidian transclusion. It also reports known Wmdx-only syntax for non-Wmdx targets and GFM-only task, strike, and table syntax for CommonMark. Code-fenced examples are excluded from syntax warnings. A clean lint result is not proof that a document is valid in every target renderer.
 
 ## Rendering HTML Embedded in Markdown
 
-CommonMark defines raw HTML blocks and inline raw HTML, so this belongs to the CommonMark renderer. This work covers HTML inside Markdown documents, not standalone HTML or MHTML import/export. Markdown remains the saved source; rendered HTML is a view.
+CommonMark defines raw HTML blocks and inline raw HTML, so this belongs to the CommonMark renderer. Safe raw HTML inside Markdown now renders in WYSIWYG using the existing CommonMark renderer and DOMPurify. Tapping alone does not expose source; if the user enables syntax exposure, source appears according to the caret, line, or block setting. Source mode remains literal. Markdown remains the saved source; rendered HTML is a view. Standalone HTML or MHTML import/export is separate.
 
 ### Resource Audit
 
@@ -180,4 +180,4 @@ CommonMark defines raw HTML blocks and inline raw HTML, so this belongs to the C
 
 ### Implementation Boundary
 
-Use the existing CommonMark parser to identify and render CommonMark raw-HTML nodes, then sanitize before attaching any rendered DOM. Keep the original Markdown unchanged, preserve source offsets, and reveal raw syntax when the caret enters the HTML span or block. Source view continues to show literal source. Never execute scripts, event handlers, or unsafe URLs; if a sanitizer rejects content, preserve and expose the source instead of silently deleting it. Support ordinary safe HTML through a documented allowlist, and do not claim arbitrary custom or active HTML is fully rendered. Whole-document HTML/MHTML conversion remains a later phase.
+The implementation uses the existing CommonMark parser to identify raw-HTML regions and DOMPurify to sanitize rendered DOM. It preserves Markdown and source offsets, keeps HTML rendered by default in WYSIWYG, and reveals syntax only according to the user's exposure setting. Source mode shows literal Markdown. Scripts, event handlers, and unsafe URLs are never executed; sanitization may change or omit active content. This preview does not imply full arbitrary-HTML fidelity; whole-document HTML/MHTML conversion remains a separate phase.
