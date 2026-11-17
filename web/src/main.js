@@ -5853,23 +5853,25 @@ function markdownHtmlHasVisibleContent(html) {
 }
 
 class MarkdownHtmlPreviewWidget extends WidgetType {
-  constructor(html, from, to, allowSyntaxExposure) {
+  constructor(html, from, to, allowSyntaxExposure, block = true) {
     super();
     this.html = html;
     this.from = from;
     this.to = to;
     this.allowSyntaxExposure = allowSyntaxExposure;
+    this.block = block;
   }
 
   eq(other) {
     return other instanceof MarkdownHtmlPreviewWidget &&
       other.html === this.html && other.from === this.from && other.to === this.to &&
-      other.allowSyntaxExposure === this.allowSyntaxExposure;
+      other.allowSyntaxExposure === this.allowSyntaxExposure &&
+      other.block === this.block;
   }
 
   toDOM(view) {
-    const wrapper = document.createElement('div');
-    wrapper.className = 'cm-markdown-html-preview';
+    const wrapper = document.createElement(this.block ? 'div' : 'span');
+    wrapper.className = `cm-markdown-html-preview${this.block ? '' : ' is-inline'}`;
     wrapper.setAttribute(
       'aria-label',
       this.allowSyntaxExposure
@@ -5878,8 +5880,9 @@ class MarkdownHtmlPreviewWidget extends WidgetType {
     );
     wrapper.setAttribute('data-html-source-from', String(this.from));
     if (this.allowSyntaxExposure) wrapper.tabIndex = 0;
-    wrapper.style.cssText =
-      'display:block;max-width:100%;overflow-x:auto;box-sizing:border-box;margin:0.25em 0;color:inherit;font:inherit;';
+    wrapper.style.cssText = this.block
+      ? 'display:block;max-width:100%;overflow-x:auto;box-sizing:border-box;margin:0.25em 0;color:inherit;font:inherit;'
+      : 'display:inline;max-width:100%;box-sizing:border-box;color:inherit;font:inherit;';
     wrapper.innerHTML = this.html;
 
     const revealSource = event => {
@@ -5960,7 +5963,10 @@ function buildMarkdownHtmlRenderValue(state) {
     syntaxExposureScope !== 'hidden';
   const exposureLayout = syntaxExposureEnabled ? markdownRenderPlan(state).semantic : null;
   for (const region of candidates) {
-    const regionLayout = region.kind === 'html-element'
+    const htmlElement = region.kind === 'html-element' ||
+      region.kind === 'html-inline-element';
+    const blockElement = region.kind !== 'html-inline-element';
+    const regionLayout = htmlElement
       ? { blocks: [] }
       : exposureLayout;
     if (syntaxExposureEnabled && isSyntaxRangeActiveForCurrentExposure(
@@ -5972,9 +5978,9 @@ function buildMarkdownHtmlRenderValue(state) {
     decorations.push(
       Decoration.replace({
         widget: new MarkdownHtmlPreviewWidget(
-          html, region.from, region.to, syntaxExposureEnabled
+          html, region.from, region.to, syntaxExposureEnabled, blockElement
         ),
-        block: true
+        ...(blockElement ? { block: true } : {})
       }).range(region.from, region.to)
     );
     renderedRegions.push(region);

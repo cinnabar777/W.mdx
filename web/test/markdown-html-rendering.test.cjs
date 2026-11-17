@@ -103,6 +103,14 @@ test('raw HTML respects WYSIWYG syntax-exposure settings', async () => {
     const wysiwygPreviews = [...window.document.querySelectorAll('.cm-markdown-html-preview')];
     assert.ok(wysiwygPreviews.length >= 4,
       'WYSIWYG renders independent HTML children, inline HTML, and the regular block');
+    const inlineHtmlPreviews = wysiwygPreviews.filter(preview =>
+      preview.querySelector('kbd,mark')
+    );
+    assert.equal(inlineHtmlPreviews.length, 2,
+      'separate inline HTML elements receive separate preview widgets');
+    assert.ok(inlineHtmlPreviews.every(preview =>
+      preview.tagName === 'SPAN' && preview.classList.contains('is-inline')
+    ), 'inline HTML previews remain inline instead of becoming paragraph-sized blocks');
     assert.ok(wysiwygPreviews.some(preview => preview.querySelector('.raw-html-block')),
       'WYSIWYG renders HTML block elements');
     assert.ok(wysiwygPreviews.some(preview => preview.querySelector('kbd')),
@@ -169,6 +177,22 @@ test('raw HTML respects WYSIWYG syntax-exposure settings', async () => {
     assert.equal(window.document.querySelectorAll('.cm-markdown-html-preview').length, wysiwygPreviews.length - 1,
       'other HTML regions remain rendered while the selected region exposes syntax');
     assert.equal(window.editorBridge.getMarkdown(), source, 'syntax exposure never mutates Markdown');
+
+    window.editorBridge.setSelectionState({ anchor: safeTextPosition, head: safeTextPosition });
+    await waitForDomCondition(window,
+      () => window.document.querySelectorAll('.cm-markdown-html-preview').length === wysiwygPreviews.length,
+      'the HTML previews render again before testing inline source');
+    window.document.querySelector('.cm-markdown-html-preview kbd')
+      .closest('.cm-markdown-html-preview')
+      .dispatchEvent(new window.MouseEvent('pointerdown', { bubbles: true, cancelable: true }));
+    await waitForDomCondition(window,
+      () => sourceText(window.document.querySelector('.cm-content')).includes('<kbd>Ctrl</kbd>'),
+      'caret exposure reveals only the selected inline HTML element');
+    assert.equal(sourceText(window.document.querySelector('.cm-content')).includes('<mark>highlight</mark>'), false,
+      'the neighboring inline HTML element remains rendered');
+    assert.ok([...window.document.querySelectorAll('.cm-markdown-html-preview')]
+      .some(preview => preview.querySelector('mark')),
+    'the neighboring inline element remains independently available');
 
     await window.editorBridge.setEditorMode('source');
     const content = window.document.querySelector('.cm-content');

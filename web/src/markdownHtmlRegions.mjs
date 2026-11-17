@@ -155,6 +155,7 @@ export function collectMarkdownHtmlPresentation(state) {
   const regions = [];
   const hiddenRanges = [];
   const htmlBlocks = [];
+  const inlineContainers = new Map();
   tree.iterate({
     enter(node) {
       if (node.name !== 'HTMLBlock' || node.to <= node.from) return;
@@ -184,16 +185,27 @@ export function collectMarkdownHtmlPresentation(state) {
       }
       if (!container || container.to <= container.from) return;
       const key = container.from + ':' + container.to;
-      if (!regions.some(region => region.key === key)) {
-        regions.push({
-          from: container.from,
-          to: container.to,
-          kind: container.name === 'Paragraph' ? 'inline' : 'heading',
-          key
-        });
-      }
+      if (!inlineContainers.has(key)) inlineContainers.set(key, container);
     }
   });
+
+  for (const container of inlineContainers.values()) {
+    const source = state.doc.sliceString(container.from, container.to);
+    const inlinePresentation = collectHtmlBlockPresentation(source, container.from);
+    if (inlinePresentation.regions.length) {
+      regions.push(...inlinePresentation.regions.map(region => ({
+        ...region,
+        kind: 'html-inline-element'
+      })));
+      hiddenRanges.push(...inlinePresentation.hiddenRanges);
+    } else {
+      regions.push({
+        from: container.from,
+        to: container.to,
+        kind: container.name === 'Paragraph' ? 'inline' : 'heading'
+      });
+    }
+  }
 
   const ordered = regions.sort((a, b) => a.from - b.from || b.to - a.to);
   const nonOverlapping = [];
