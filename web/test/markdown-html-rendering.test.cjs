@@ -91,8 +91,11 @@ test('raw HTML in Markdown renders safely in WYSIWYG modes and reveals source wh
       await new Promise(resolve => setTimeout(resolve, 20));
       await window.editorBridge.setEditorMode(mode);
       await new Promise(resolve => setTimeout(resolve, 20));
+      const safeTextPosition = source.indexOf('Safe text after the HTML.');
+      window.editorBridge.setSelectionState({ anchor: safeTextPosition, head: safeTextPosition });
+      await new Promise(resolve => setTimeout(resolve, 20));
       const previews = [...window.document.querySelectorAll('.cm-markdown-html-preview')];
-      assert.equal(previews.length, 2, mode + ' renders the safe block and inline HTML');
+      assert.equal(previews.length, 3, mode + ' renders the block, inline, and inert script regions');
       assert.ok(previews.some(preview => preview.querySelector('.raw-html-block')),
         mode + ' renders HTML block elements: ' + previews.map(preview => preview.innerHTML).join(' || '));
       assert.ok(previews.some(preview => preview.querySelector('kbd')),
