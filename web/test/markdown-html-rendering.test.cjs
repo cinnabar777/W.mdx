@@ -433,8 +433,6 @@ test('raw HTML respects WYSIWYG syntax-exposure settings', async () => {
         'caret entry must not remove the hard-break spaces decoration');
       assert.equal(window.getComputedStyle(activeHardBreakSpaces).whiteSpace, 'break-spaces',
         'caret movement preserves the hard-break spacing that stabilizes hyphenation layout');
-      assert.equal(window.getComputedStyle(activeHardBreakSpaces).hyphens, 'none',
-        'hard-break spaces must not re-enable hyphenation while traversing the break');
     }
 
     await window.editorBridge.setEditorMode('rendered');

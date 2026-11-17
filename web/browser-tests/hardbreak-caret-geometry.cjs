@@ -60,16 +60,18 @@ async function main() {
     await page.waitForFunction(() => window.editorBridge);
     await page.evaluate(async () => {
       await window.editorBridge.setEditorMode('rendered');
-      window.editorBridge.applyAllPreferences({
+      await window.editorBridge.applyAllPreferences({
         pref_markdown_profile: 'commonmark',
-        pref_markdown_syntax_exposure: 'hidden'
+        pref_markdown_syntax_exposure: 'caret',
+        pref_paragraph_hyphenate: true
       });
-      window.editorBridge.setMarkdown('first line  \nsecond line');
+      window.editorBridge.setMarkdown('first line  \nintercontinentalization remains in this paragraph');
     });
     await page.waitForSelector('.cm-hardbreak-spaces');
 
     const geometry = await page.evaluate(() => {
       const span = document.querySelector('.cm-hardbreak-spaces');
+      const paragraph = span.closest('.cm-paragraph');
       const walker = document.createTreeWalker(span, NodeFilter.SHOW_TEXT);
       const text = walker.nextNode();
       if (!text || text.data !== '  ') return { error: 'hard-break spaces are not literal text' };
@@ -99,6 +101,7 @@ async function main() {
 
       return {
         whiteSpace: getComputedStyle(span).whiteSpace,
+        paragraphHyphens: getComputedStyle(paragraph).hyphens,
         carets,
         characterRects
       };
@@ -107,6 +110,8 @@ async function main() {
     assert.equal(geometry.error, undefined, geometry.error);
     assert.equal(geometry.whiteSpace, 'break-spaces',
       'hard-break spaces must preserve their visual positions');
+    assert.equal(geometry.paragraphHyphens, 'auto',
+      'the paragraph keeps its configured hyphenation while the caret visits the break');
     assert.equal(geometry.characterRects.length, 2);
     assert.ok(geometry.characterRects.every(rect => rect.width > 0 && rect.height > 0),
       `both spaces need measurable layout: ${JSON.stringify(geometry)}`);
@@ -115,6 +120,30 @@ async function main() {
       geometry.carets[1].x < geometry.carets[2].x,
       `each caret offset across the trailing spaces needs its own horizontal position: ${JSON.stringify(geometry)}`
     );
+    await page.evaluate(head => {
+      window.editorBridge.setSelectionState({ anchor: head, head });
+      document.querySelector('.cm-content')?.focus();
+    }, 'first line'.length);
+    const hyphenationWhileMoving = [];
+    for (const expectedHead of [11, 12, 13, 14]) {
+      await page.keyboard.press('ArrowRight');
+      await page.waitForTimeout(20);
+      const state = await page.evaluate(() => {
+        const paragraph = document.querySelector('.cm-paragraph');
+        const spaces = document.querySelector('.cm-hardbreak-spaces');
+        return {
+          head: JSON.parse(window.editorBridge.getSelectionState()).head,
+          hyphens: getComputedStyle(paragraph).hyphens,
+          whiteSpace: getComputedStyle(spaces).whiteSpace,
+          hardBreakSpaces: spaces.textContent
+        };
+      });
+      assert.equal(state.head, expectedHead, 'real Right-arrow movement reaches each expected hard-break offset');
+      hyphenationWhileMoving.push(state);
+    }
+    assert.ok(hyphenationWhileMoving.every(state =>
+      state.hyphens === 'auto' && state.whiteSpace === 'break-spaces' && state.hardBreakSpaces === '  '
+    ), `hyphenation and hard-break spacing stay stable across caret movement: ${JSON.stringify(hyphenationWhileMoving)}`);
     assert.deepEqual(pageErrors, [], 'the editor must not report browser errors');
     console.log('1 focused hard-break caret geometry check passed.');
   } finally {
