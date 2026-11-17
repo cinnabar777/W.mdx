@@ -180,6 +180,63 @@ test('raw HTML respects WYSIWYG syntax-exposure settings', async () => {
     assert.equal(sourceText(window.document.querySelector('.cm-content')).includes('<H3 ADD_DATE='), false,
       'moving from the heading to the link hides the previous element source again');
 
+    const structuredBookmarkSource = [
+      '<DL><p>',
+      '  <DT><H3>WMK</H3>',
+      '  <DL><p>',
+      '    <DT><A HREF="https://example.test/commit">Commit</A>',
+      '    <DT><A HREF="https://example.test/commits">commits</A>',
+      '  </DL><p>',
+      '  <DT><A HREF="https://example.test/bm">BM</A>',
+      '</DL><p>'
+    ].join('\n');
+    const firstBookmarkLabel = structuredBookmarkSource.indexOf('Commit');
+    window.editorBridge.setMarkdownSyntaxExposure('hidden');
+    await new Promise(resolve => setTimeout(resolve, 20));
+    window.editorBridge.setMarkdown(structuredBookmarkSource);
+    await new Promise(resolve => setTimeout(resolve, 20));
+    content = window.document.querySelector('.cm-content');
+    assert.ok([...content.querySelectorAll('.cm-raw-html-text')]
+      .some(span => span.textContent === 'Commit' && span.classList.contains('cm-raw-html-a')),
+    'a nested bookmark list does not get absorbed into its preceding DT heading');
+    assert.equal(sourceText(content).includes('</DL>'), false,
+      'malformed bookmark closing tags stay hidden rather than becoming visible text');
+
+    window.editorBridge.setMarkdownSyntaxExposure('caret');
+    await new Promise(resolve => setTimeout(resolve, 20));
+    window.editorBridge.setSelectionState({
+      anchor: firstBookmarkLabel + 2,
+      head: firstBookmarkLabel + 2
+    });
+    await waitForDomCondition(window,
+      () => sourceText(window.document.querySelector('.cm-content'))
+        .includes('<A HREF="https://example.test/commit">Commit</A>'),
+      'caret exposure reveals only the bookmark element under the caret');
+    let exposedBookmarkSource = sourceText(window.document.querySelector('.cm-content'));
+    assert.equal(exposedBookmarkSource.includes('https://example.test/commits'), false,
+      'caret exposure does not reveal a sibling bookmark');
+    assert.equal(exposedBookmarkSource.includes('</DL>'), false,
+      'caret exposure does not reveal a distant structural closing tag');
+
+    window.editorBridge.setMarkdownSyntaxExposure('line');
+    await new Promise(resolve => setTimeout(resolve, 20));
+    await waitForDomCondition(window,
+      () => sourceText(window.document.querySelector('.cm-content'))
+        .includes('<DT><A HREF="https://example.test/commit">Commit</A>'),
+      'line exposure includes the complete source line containing the caret');
+    exposedBookmarkSource = sourceText(window.document.querySelector('.cm-content'));
+    assert.equal(exposedBookmarkSource.includes('https://example.test/commits'), false,
+      'line exposure leaves the neighboring source line rendered');
+
+    window.editorBridge.setMarkdownSyntaxExposure('block');
+    await new Promise(resolve => setTimeout(resolve, 20));
+    await waitForDomCondition(window,
+      () => sourceText(window.document.querySelector('.cm-content'))
+        .includes('https://example.test/commits'),
+      'block exposure reveals the complete raw HTML block');
+    assert.equal(sourceText(window.document.querySelector('.cm-content')).includes('</DL>'), true,
+      'block exposure includes structural closing tags within that HTML block');
+
     const quotedSource = [
       '> <DL><p><DT><H3>Quoted folder</H3>',
       '> <DL><DT><A HREF="https://quoted.example.test/">Quoted bookmark</A></DL></DL>'
@@ -272,6 +329,9 @@ test('raw HTML respects WYSIWYG syntax-exposure settings', async () => {
     content = window.document.querySelector('.cm-content');
     assert.equal(content.querySelectorAll('.cm-hardbreak-syntax').length, 0,
       'two-space hard-break spelling remains ordinary visible whitespace in WYSIWYG');
+    const hardBreakSpaces = content.querySelector('.cm-hardbreak-spaces');
+    assert.equal(hardBreakSpaces?.textContent, '  ',
+      'trailing hard-break spaces remain real, separately addressable text with preserved layout width');
     const hardBreakSpacesFrom = hardBreakSource.indexOf('hard') + 'hard'.length;
     window.editorBridge.setSelectionState({
       anchor: hardBreakSpacesFrom,

@@ -1028,6 +1028,15 @@ function hardBreakSyntaxDecoration(doc, node) {
   return Decoration.mark({ class: 'cm-hardbreak-syntax' }).range(end - 1, end);
 }
 
+function hardBreakSpacesDecoration(doc, node) {
+  const end = hardBreakSyntaxEnd(doc, node);
+  const spelling = doc.sliceString(node.from, end);
+  if (!/^ {2,}$/.test(spelling)) return null;
+  // Keep real trailing spaces in the document and reserve their layout width,
+  // so caret positions remain visible at the end of a hard-broken line.
+  return Decoration.mark({ class: 'cm-hardbreak-spaces' }).range(node.from, end);
+}
+
 function markdownCodeSpanDisplayText(doc, node) {
   const source = doc.sliceString(node.from, node.to);
   const opening = /^`+/.exec(source)?.[0];
@@ -3662,6 +3671,9 @@ export const livePreviewPlugin = ViewPlugin.fromClass(class {
             if (decoration) {
               builder.push(decoration);
               hiddenSyntaxRanges.push(decoration);
+            } else {
+              const spaces = hardBreakSpacesDecoration(doc, node);
+              if (spaces) builder.push(spaces);
             }
           }
 
@@ -5291,6 +5303,9 @@ function buildHeightMapValue(state) {
         if (decoration) {
           replacements.push(decoration);
           hiddenSyntaxRanges.push(decoration);
+        } else {
+          const spaces = hardBreakSpacesDecoration(doc, node);
+          if (spaces) replacements.push(spaces);
         }
       }
 
@@ -5979,12 +5994,24 @@ function buildMarkdownHtmlRenderValue(state) {
     const htmlElement = region.kind === 'html-element' ||
       region.kind === 'html-inline-element';
     const blockElement = region.kind !== 'html-inline-element';
-    const regionLayout = htmlElement
-      ? { blocks: [] }
-      : exposureLayout;
+    const regionLayout = {
+      blocks: [
+        ...(exposureLayout?.blocks ?? []),
+        ...presentation.blockRanges
+      ]
+    };
     if (syntaxExposureEnabled && isSyntaxRangeActiveForCurrentExposure(
       selection, state.doc, regionLayout, region.from, region.to
     )) continue;
+    if (region.kind === 'html-syntax') {
+      const syntaxDecoration = Decoration.replace({
+        widget: new MarkdownHtmlHiddenSyntaxWidget()
+      }).range(region.from, region.to);
+      decorations.push(syntaxDecoration);
+      hiddenSyntaxDecorations.push(syntaxDecoration);
+      renderedRegions.push(region);
+      continue;
+    }
     const source = state.doc.sliceString(region.from, region.to);
     const html = renderMarkdownHtmlRegion(region.renderSource ?? source, profile);
     if (!html || !markdownHtmlHasVisibleContent(html)) continue;

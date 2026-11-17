@@ -11,6 +11,7 @@
     "test:browser:interactions": "node browser-tests/editor-interaction-regressions.cjs",
     "test:browser:tables": "node browser-tests/table-workflow-matrix.cjs",
     "test:browser:table-syntax-scroll": "node browser-tests/table-syntax-scroll.cjs",
+    "test:browser:hardbreak-caret": "node browser-tests/hardbreak-caret-geometry.cjs",
     "test:browser:lists": "node browser-tests/list-workflow-matrix.cjs",
     "test:browser:list-caret": "node browser-tests/list-caret-stability.cjs"
   },

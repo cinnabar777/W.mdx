@@ -32,6 +32,18 @@ const HTML_VISIBLE_VOID_ELEMENTS = new Set([
   'area', 'br', 'canvas', 'embed', 'hr', 'iframe', 'img', 'input',
   'object', 'source', 'svg', 'video', 'audio'
 ]);
+const HTML_TEXT_CONTAINERS = new Set([
+  'a', 'abbr', 'b', 'bdi', 'bdo', 'cite', 'code', 'del', 'dfn',
+  'em', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'i', 'ins', 'kbd',
+  'mark', 'p', 'q', 's', 'samp', 'small', 'span', 'strong', 'sub',
+  'sup', 'time', 'u', 'var'
+]);
+const HTML_BLOCK_CONTAINERS = new Set([
+  'address', 'article', 'aside', 'blockquote', 'body', 'dd', 'div',
+  'dl', 'dt', 'fieldset', 'figcaption', 'figure', 'footer', 'form',
+  'header', 'li', 'main', 'nav', 'ol', 'pre', 'section', 'table',
+  'tbody', 'td', 'tfoot', 'th', 'thead', 'tr', 'ul'
+]);
 
 function childrenOf(node) {
   const children = [];
@@ -202,6 +214,9 @@ function collectBlockElementRegions(element, ancestors, source, base, regions, s
     child.name === 'Element' && hasVisibleContent(child, source)
   );
   const hasText = hasDirectVisibleText(element, source);
+  const hasBlockChildren = childElements.some(child =>
+    HTML_BLOCK_CONTAINERS.has(elementTagName(child, source))
+  );
 
   // A table is one navigable editing unit; splitting its cells would destroy
   // the visual row/column continuity that the editor preserves elsewhere.
@@ -213,7 +228,11 @@ function collectBlockElementRegions(element, ancestors, source, base, regions, s
 
   // Keep text-bearing containers (and anchors around nested inline content)
   // editable. Only their tags are hidden; nested text keeps its own HTML style.
-  if (hasText || tagName === 'a' || childElements.length === 0) {
+  if (
+    (hasText && !hasBlockChildren && HTML_TEXT_CONTAINERS.has(tagName)) ||
+    tagName === 'a' ||
+    childElements.length === 0
+  ) {
     const editableTextRanges = [];
     const entityRanges = [];
     const syntaxRanges = [];
@@ -293,7 +312,7 @@ function collectHtmlBlockPresentation(blockSource, base, quotePrefixes = []) {
       );
       if (insideRenderedElement) return;
       if (HTML_HIDDEN_SYNTAX_NODES.has(node.name)) {
-        hiddenRanges.push({ from, to, kind: 'html-syntax' });
+        if (to > from) hiddenRanges.push({ from, to, kind: 'html-syntax' });
       } else if (
         HTML_TEXT_NODES.has(node.name) &&
         !sourceMap.source.slice(node.from, node.to).trim() &&
@@ -312,6 +331,82 @@ function collectHtmlBlockPresentation(blockSource, base, quotePrefixes = []) {
       }
     }
   });
+
+  // Lezer can recover from malformed bookmark HTML by treating an unmatched
+  // closing tag as an error token plus plain text. Restore the complete tag as
+  // one hideable/exposable source range instead of letting its tail leak into
+  // the rendered document.
+  for (const match of sourceMap.source.matchAll(/<\/([A-Za-z][A-Za-z0-9:_-]*)[ \t]*>/g)) {
+    const localFrom = match.index;
+    const localTo = localFrom + match[0].length;
+    const range = {
+      from: base + sourceMap.mapStart(localFrom),
+      to: base + sourceMap.mapEnd(localTo)
+    };
+    const containingRegion = regions.find(region =>
+      range.from >= region.from && range.to <= region.to
+    );
+    if (containingRegion) {
+      if (['pre', 'code', 'script', 'style', 'textarea'].some(tag =>
+        containingRegion.tagStack?.includes(tag)
+      )) continue;
+      if (containingRegion.kind !== 'html-element') continue;
+      const alreadySyntax = containingRegion.syntaxRanges.some(syntax =>
+        range.from >= syntax.from && range.to <= syntax.to
+      );
+      if (alreadySyntax) continue;
+
+      containingRegion.editableTextRanges =
+        containingRegion.editableTextRanges.flatMap(textRange => {
+          if (range.to <= textRange.from || range.from >= textRange.to) {
+            return [textRange];
+          }
+          return [
+            ...(range.from > textRange.from
+              ? [{ ...textRange, to: range.from }]
+              : []),
+            ...(range.to < textRange.to
+              ? [{ ...textRange, from: range.to }]
+              : [])
+          ];
+        });
+      containingRegion.syntaxRanges.push(range);
+      continue;
+    }
+
+    const alreadyHidden = hiddenRanges.some(hidden =>
+      range.from >= hidden.from && range.to <= hidden.to
+    );
+    if (!alreadyHidden) hiddenRanges.push({ ...range, kind: 'html-syntax' });
+    regions.push({
+      ...range,
+      kind: 'html-syntax',
+      tagName: match[1].toLowerCase(),
+      editableTextRanges: [],
+      entityRanges: [],
+      syntaxRanges: [],
+      renderSource: ''
+    });
+  }
+
+  // Structural tags outside text-bearing elements should stay hidden in the
+  // default view, but remain individually targetable by caret exposure.
+  for (const range of hiddenRanges) {
+    if (range.kind !== 'html-syntax' || range.to <= range.from) continue;
+    if (regions.some(region =>
+      range.from >= region.from && range.to <= region.to
+    )) continue;
+    regions.push({
+      from: range.from,
+      to: range.to,
+      kind: 'html-syntax',
+      tagName: '',
+      editableTextRanges: [],
+      entityRanges: [],
+      syntaxRanges: [],
+      renderSource: ''
+    });
+  }
   return { regions, hiddenRanges };
 }
 
