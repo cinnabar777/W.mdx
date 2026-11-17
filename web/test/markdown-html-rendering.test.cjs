@@ -202,12 +202,12 @@ test('raw HTML respects WYSIWYG syntax-exposure settings', async () => {
     assert.equal(sourceText(window.document.querySelector('.cm-content')).includes('<A HREF='), false,
       'the sibling bookmark link remains rendered');
     window.editorBridge.setSelectionState({
-      anchor: anchorOpenFrom + 3,
-      head: anchorOpenFrom + 3
+      anchor: anchorOpenFrom,
+      head: anchorOpenFrom
     });
     await waitForDomCondition(window,
       () => sourceText(window.document.querySelector('.cm-content')).includes('<A HREF='),
-      'caret exposure reveals the anchor opening tag under the caret');
+      'caret at the opening delimiter reveals the anchor tag under the caret');
     assert.equal(sourceText(window.document.querySelector('.cm-content')).includes('</A>'), false,
       'exposing an anchor opening tag does not expose its closing tag');
     window.editorBridge.setSelectionState({
@@ -409,31 +409,8 @@ test('raw HTML respects WYSIWYG syntax-exposure settings', async () => {
     content = window.document.querySelector('.cm-content');
     assert.equal(content.querySelectorAll('.cm-hardbreak-syntax').length, 0,
       'two-space hard-break spelling remains ordinary visible whitespace in WYSIWYG');
-    const hardBreakSpaces = content.querySelector('.cm-hardbreak-spaces');
-    assert.equal(hardBreakSpaces?.textContent, '  ',
-      'trailing hard-break spaces remain real, separately addressable text with preserved layout width');
-    const hardBreakSpacesFrom = hardBreakSource.indexOf('hard') + 'hard'.length;
-    window.editorBridge.setSelectionState({
-      anchor: hardBreakSpacesFrom,
-      head: hardBreakSpacesFrom
-    });
-    for (const expectedPosition of [hardBreakSpacesFrom + 1, hardBreakSpacesFrom + 2]) {
-      content.dispatchEvent(new window.KeyboardEvent('keydown', {
-        key: 'ArrowRight',
-        keyCode: 39,
-        which: 39,
-        bubbles: true,
-        cancelable: true
-      }));
-      await new Promise(resolve => setTimeout(resolve, 20));
-      assert.equal(JSON.parse(window.editorBridge.getSelectionState()).head, expectedPosition,
-        'the caret can stop on each literal hard-break space');
-      const activeHardBreakSpaces = content.querySelector('.cm-hardbreak-spaces');
-      assert.equal(activeHardBreakSpaces?.textContent, '  ',
-        'caret entry must not remove the hard-break spaces decoration');
-      assert.equal(window.getComputedStyle(activeHardBreakSpaces).whiteSpace, 'break-spaces',
-        'caret movement preserves the hard-break spacing that stabilizes hyphenation layout');
-    }
+    assert.equal(content.querySelector('.cm-hardbreak-spaces'), null,
+      'ordinary spaces are not wrapped or given special whitespace styling');
 
     await window.editorBridge.setEditorMode('rendered');
     window.editorBridge.setMarkdownSyntaxExposure('hidden');

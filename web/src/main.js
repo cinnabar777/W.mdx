@@ -1028,15 +1028,6 @@ function hardBreakSyntaxDecoration(doc, node) {
   return Decoration.mark({ class: 'cm-hardbreak-syntax' }).range(end - 1, end);
 }
 
-function hardBreakSpacesDecoration(doc, node) {
-  const end = hardBreakSyntaxEnd(doc, node);
-  const spelling = doc.sliceString(node.from, end);
-  if (!/^ {2,}$/.test(spelling)) return null;
-  // Keep real trailing spaces in the document and reserve their layout width,
-  // so caret positions remain visible at the end of a hard-broken line.
-  return Decoration.mark({ class: 'cm-hardbreak-spaces' }).range(node.from, end);
-}
-
 function markdownCodeSpanDisplayText(doc, node) {
   const source = doc.sliceString(node.from, node.to);
   const opening = /^`+/.exec(source)?.[0];
@@ -3666,16 +3657,11 @@ export const livePreviewPlugin = ViewPlugin.fromClass(class {
             return false;
           }
 
-          if (!isPureWysiwyg && node.name === 'HardBreak') {
+          if (!isPureWysiwyg && !isNodeActive && node.name === 'HardBreak') {
             const decoration = hardBreakSyntaxDecoration(doc, node);
             if (decoration) {
-              if (!isNodeActive) {
-                builder.push(decoration);
-                hiddenSyntaxRanges.push(decoration);
-              }
-            } else {
-              const spaces = hardBreakSpacesDecoration(doc, node);
-              if (spaces) builder.push(spaces);
+              builder.push(decoration);
+              hiddenSyntaxRanges.push(decoration);
             }
           }
 
@@ -5305,9 +5291,6 @@ function buildHeightMapValue(state) {
         if (decoration) {
           replacements.push(decoration);
           hiddenSyntaxRanges.push(decoration);
-        } else {
-          const spaces = hardBreakSpacesDecoration(doc, node);
-          if (spaces) replacements.push(spaces);
         }
       }
 
@@ -5843,7 +5826,7 @@ function selectionTouchesMarkdownHtmlRegion(selection, region) {
 
 function selectionTouchesHtmlSourceRange(selection, range) {
   return selection.empty
-    ? selection.head > range.from && selection.head < range.to
+    ? selection.head >= range.from && selection.head < range.to
     : selection.from < range.to && selection.to > range.from;
 }
 

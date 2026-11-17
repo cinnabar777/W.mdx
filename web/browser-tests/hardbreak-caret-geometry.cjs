@@ -62,90 +62,46 @@ async function main() {
       await window.editorBridge.setEditorMode('rendered');
       await window.editorBridge.applyAllPreferences({
         pref_markdown_profile: 'commonmark',
-        pref_markdown_syntax_exposure: 'caret',
+        pref_markdown_syntax_exposure: 'hidden',
         pref_paragraph_hyphenate: true
       });
-      window.editorBridge.setMarkdown('first line  \nintercontinentalization remains in this paragraph');
-    });
-    await page.waitForSelector('.cm-hardbreak-spaces');
-
-    const geometry = await page.evaluate(() => {
-      const span = document.querySelector('.cm-hardbreak-spaces');
-      const paragraph = span.closest('.cm-paragraph');
-      const walker = document.createTreeWalker(span, NodeFilter.SHOW_TEXT);
-      const text = walker.nextNode();
-      if (!text || text.data !== '  ') return { error: 'hard-break spaces are not literal text' };
-
-      const carets = [];
-      const characterRects = [];
-      for (let offset = 0; offset <= text.length; offset += 1) {
-        const caret = document.createRange();
-        caret.setStart(text, offset);
-        caret.collapse(true);
-        const rect = caret.getBoundingClientRect();
-        carets.push({ x: rect.left, y: rect.top, height: rect.height });
-
-        if (offset < text.length) {
-          const character = document.createRange();
-          character.setStart(text, offset);
-          character.setEnd(text, offset + 1);
-          const characterRect = character.getBoundingClientRect();
-          characterRects.push({
-            left: characterRect.left,
-            right: characterRect.right,
-            width: characterRect.width,
-            height: characterRect.height
-          });
-        }
-      }
-
-      return {
-        whiteSpace: getComputedStyle(span).whiteSpace,
-        paragraphHyphens: getComputedStyle(paragraph).hyphens,
-        carets,
-        characterRects
-      };
     });
 
-    assert.equal(geometry.error, undefined, geometry.error);
-    assert.equal(geometry.whiteSpace, 'break-spaces',
-      'hard-break spaces must preserve their visual positions');
-    assert.equal(geometry.paragraphHyphens, 'auto',
-      'the paragraph keeps its configured hyphenation while the caret visits the break');
-    assert.equal(geometry.characterRects.length, 2);
-    assert.ok(geometry.characterRects.every(rect => rect.width > 0 && rect.height > 0),
-      `both spaces need measurable layout: ${JSON.stringify(geometry)}`);
-    assert.ok(
-      geometry.carets[0].x < geometry.carets[1].x &&
-      geometry.carets[1].x < geometry.carets[2].x,
-      `each caret offset across the trailing spaces needs its own horizontal position: ${JSON.stringify(geometry)}`
-    );
-    await page.evaluate(head => {
-      window.editorBridge.setSelectionState({ anchor: head, head });
-      document.querySelector('.cm-content')?.focus();
-    }, 'first line'.length);
-    const hyphenationWhileMoving = [];
-    for (const expectedHead of [11, 12, 13, 14]) {
-      await page.keyboard.press('ArrowRight');
-      await page.waitForTimeout(20);
-      const state = await page.evaluate(() => {
-        const paragraph = document.querySelector('.cm-paragraph');
-        const spaces = document.querySelector('.cm-hardbreak-spaces');
-        return {
+    for (const scope of ['hidden', 'caret']) {
+      const source = 'Line at end\nNext line';
+      const lineEnd = 'Line at end'.length;
+      await page.evaluate(async ({ scope, source, lineEnd }) => {
+        await window.editorBridge.applyAllPreferences({
+          pref_markdown_syntax_exposure: scope
+        });
+        window.editorBridge.setMarkdown(source);
+        window.editorBridge.setSelectionState({
+          anchor: lineEnd,
+          head: lineEnd
+        });
+        document.querySelector('.cm-content')?.focus();
+      }, { scope, source, lineEnd });
+
+      for (const count of [1, 2]) {
+        await page.keyboard.press('Space');
+        const expected = `Line at end${' '.repeat(count)}\nNext line`;
+        await page.waitForFunction(value =>
+          window.editorBridge.getMarkdown() === value, expected);
+        const state = await page.evaluate(() => ({
+          source: window.editorBridge.getMarkdown(),
           head: JSON.parse(window.editorBridge.getSelectionState()).head,
-          hyphens: getComputedStyle(paragraph).hyphens,
-          whiteSpace: getComputedStyle(spaces).whiteSpace,
-          hardBreakSpaces: spaces.textContent
-        };
-      });
-      assert.equal(state.head, expectedHead, 'real Right-arrow movement reaches each expected hard-break offset');
-      hyphenationWhileMoving.push(state);
+          specialSpaceMarkup: document.querySelector('.cm-hardbreak-spaces')
+        }));
+        assert.equal(state.source, expected,
+          `${scope}: pressing Space must insert an ordinary source space at line end`);
+        assert.equal(state.head, lineEnd + count,
+          `${scope}: caret must advance once for each inserted space`);
+        assert.equal(state.specialSpaceMarkup, null,
+          'hard-break spaces must not be wrapped or styled specially');
+      }
     }
-    assert.ok(hyphenationWhileMoving.every(state =>
-      state.hyphens === 'auto' && state.whiteSpace === 'break-spaces' && state.hardBreakSpaces === '  '
-    ), `hyphenation and hard-break spacing stay stable across caret movement: ${JSON.stringify(hyphenationWhileMoving)}`);
     assert.deepEqual(pageErrors, [], 'the editor must not report browser errors');
-    console.log('1 focused hard-break caret geometry check passed.');
+    console.log('Focused test passed: Space inserts ordinary trailing spaces in WYSIWYG.');
   } finally {
     await browser?.close();
     server.close();
