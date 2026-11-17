@@ -78,7 +78,7 @@ import {
   exportMarkdown
 } from './markdownConversion.mjs';
 import { renderMarkdownHtml } from './htmlExport.mjs';
-import { collectMarkdownHtmlRegions } from './markdownHtmlRegions.mjs';
+import { collectMarkdownHtmlPresentation } from './markdownHtmlRegions.mjs';
 import { applyMarkdownDialectProfile } from './markdownDialectPreferences.mjs';
 import { lintMarkdown } from './markdownLinter.mjs';
 import { countDocumentText, findTocMatchRanges, getTocSearchState } from './tocSearch.js';
@@ -3409,9 +3409,12 @@ export const livePreviewPlugin = ViewPlugin.fromClass(class {
     const doc = view.state.doc;
     const layout = renderPlan.semantic;
     const htmlRenderValue = view.state.field(markdownHtmlRenderField, false);
-    const renderedHtmlRegions = htmlRenderValue?.renderedRegions ?? [];
-    const isRenderedHtmlRange = (from, to) => renderedHtmlRegions.some(region =>
+    const rawHtmlRanges = htmlRenderValue?.htmlRanges ?? htmlRenderValue?.renderedRegions ?? [];
+    const isRawHtmlRange = (from, to) => rawHtmlRanges.some(region =>
       from >= region.from && to <= region.to
+    );
+    const overlapsRawHtmlRange = (from, to) => rawHtmlRanges.some(region =>
+      from < region.to && to > region.from
     );
     const orderedListLabels = collectOrderedListMarkerLabels(tree, doc);
     const linkReferenceTargets = collectMarkdownReferenceTargets(doc, tree);
@@ -3421,16 +3424,20 @@ export const livePreviewPlugin = ViewPlugin.fromClass(class {
     const underlineSyntaxRanges = isWmdxUnderlineSyntaxEnabled()
       ? [...new Map(decorationRanges
         .flatMap(range => getMarkdownFormatRanges(view, 'underline', range))
+        .filter(range => !overlapsRawHtmlRange(range.wrapperFrom, range.wrapperTo))
         .map(range => [`${range.wrapperFrom}:${range.wrapperTo}`, range])).values()]
       : [...new Map(decorationRanges
         .flatMap(range => getMarkdownFormatRanges(view, 'underline', range))
         .filter(range => range.kind === 'html')
+        .filter(range => !overlapsRawHtmlRange(range.wrapperFrom, range.wrapperTo))
         .map(range => [`${range.wrapperFrom}:${range.wrapperTo}`, range])).values()];
     const colorSyntaxRanges = [...new Map(decorationRanges
       .flatMap(range => getWmdxColorSyntaxRanges(view.state, range))
+      .filter(range => !overlapsRawHtmlRange(range.wrapperFrom, range.wrapperTo))
       .map(range => [`${range.group}:${range.wrapperFrom}:${range.wrapperTo}`, range])).values()];
     const superscriptSyntaxRanges = [...new Map(decorationRanges
       .flatMap(range => getMarkdownFormatRanges(view, 'superscript', range))
+      .filter(range => !overlapsRawHtmlRange(range.wrapperFrom, range.wrapperTo))
       .map(range => [`${range.wrapperFrom}:${range.wrapperTo}`, range])).values()];
     const htmlInlineFormatClasses = {
       bold: 'cm-bold',
@@ -3459,7 +3466,7 @@ export const livePreviewPlugin = ViewPlugin.fromClass(class {
         const range = ranges[index];
         const rangeFrom = range.wrapperFrom ?? range.from;
         const rangeTo = range.wrapperTo ?? range.to;
-        if (isRenderedHtmlRange(rangeFrom, rangeTo)) ranges.splice(index, 1);
+        if (overlapsRawHtmlRange(rangeFrom, rangeTo)) ranges.splice(index, 1);
       }
     }
 
@@ -3474,7 +3481,7 @@ export const livePreviewPlugin = ViewPlugin.fromClass(class {
 
       for (let lineNumber = firstVisibleLine; lineNumber <= lastVisibleLine; lineNumber++) {
         const line = doc.line(lineNumber);
-        if (renderedHtmlRegions.some(region => line.from >= region.from && line.to <= region.to)) continue;
+        if (rawHtmlRanges.some(region => line.from >= region.from && line.to <= region.to)) continue;
         const semantic = layout.lines.get(line.from);
         if (!semantic || semantic.kind === 'code' || semantic.kind === 'table') continue;
 
@@ -3562,7 +3569,10 @@ export const livePreviewPlugin = ViewPlugin.fromClass(class {
       if (calloutLineAttributes.has(lineFrom)) continue;
       const line = doc.lineAt(lineFrom);
       for (const range of ranges) {
-        hideSyntax(line.from + range.from, line.from + range.to);
+        const from = line.from + range.from;
+        const to = line.from + range.to;
+        if (overlapsRawHtmlRange(from, to)) continue;
+        hideSyntax(from, to);
       }
     }
 
@@ -3571,7 +3581,7 @@ export const livePreviewPlugin = ViewPlugin.fromClass(class {
         from,
         to,
         enter: (node) => {
-          if (isRenderedHtmlRange(node.from, node.to)) return false;
+          if (isRawHtmlRange(node.from, node.to)) return false;
           const line = view.state.doc.lineAt(node.from);
           const isNodeActive = isSourceMode || (!isPureWysiwyg &&
             isSyntaxRangeActiveForCurrentExposure(
@@ -5112,8 +5122,8 @@ function buildHeightMapValue(state) {
   const layout = renderPlan.semantic;
   const wmdxOrderedListItems = layout.orderedItems;
   const linkReferenceTargets = collectMarkdownReferenceTargets(doc, tree);
-  const renderedHtmlRegions = buildMarkdownHtmlRenderValue(state).renderedRegions;
-  const isRenderedHtmlRange = (from, to) => renderedHtmlRegions.some(region =>
+  const rawHtmlRanges = buildMarkdownHtmlRenderValue(state).htmlRanges;
+  const isRawHtmlRange = (from, to) => rawHtmlRanges.some(region =>
     from >= region.from && to <= region.to
   );
   const replacements = [];
@@ -5131,7 +5141,7 @@ function buildHeightMapValue(state) {
 
   for (let lineNumber = 1; lineNumber <= doc.lines; lineNumber++) {
     const line = doc.line(lineNumber);
-    if (renderedHtmlRegions.some(region => line.from >= region.from && line.to <= region.to)) continue;
+    if (rawHtmlRanges.some(region => line.from >= region.from && line.to <= region.to)) continue;
     const semantic = layout.lines.get(line.from);
     if (semantic?.kind === 'code' || semantic?.kind === 'table') continue;
 
@@ -5167,7 +5177,7 @@ function buildHeightMapValue(state) {
     from: 0,
     to: doc.length,
     enter: (node) => {
-      if (isRenderedHtmlRange(node.from, node.to)) return false;
+      if (isRawHtmlRange(node.from, node.to)) return false;
       const line = doc.lineAt(node.from);
 
       const headingLevel = getHeadingLevel(node.name);
@@ -5611,10 +5621,10 @@ function buildLiveEmbeddedDocumentValue(state) {
   const decorations = [];
   const hiddenSyntaxRanges = [];
   const doc = state.doc;
-  const renderedHtmlRegions = buildMarkdownHtmlRenderValue(state).renderedRegions;
+  const rawHtmlRanges = buildMarkdownHtmlRenderValue(state).htmlRanges;
   syntaxTree(state).iterate({
     enter: node => {
-      if (node.name !== 'Image' || renderedHtmlRegions.some(region =>
+      if (node.name !== 'Image' || rawHtmlRanges.some(region =>
         node.from >= region.from && node.to <= region.to
       )) return;
       const raw = doc.sliceString(node.from, node.to);
@@ -5677,10 +5687,10 @@ function buildLivePreviewCodeSpanValue(state) {
 
   const doc = state.doc;
   const decorations = [];
-  const renderedHtmlRegions = buildMarkdownHtmlRenderValue(state).renderedRegions;
+  const rawHtmlRanges = buildMarkdownHtmlRenderValue(state).htmlRanges;
   syntaxTree(state).iterate({
     enter(node) {
-      if (node.name !== 'InlineCode' || renderedHtmlRegions.some(region =>
+      if (node.name !== 'InlineCode' || rawHtmlRanges.some(region =>
         node.from >= region.from && node.to <= region.to
       )) return;
       const codeSpan = markdownCodeSpanDisplayText(doc, node);
@@ -5876,7 +5886,10 @@ class MarkdownHtmlPreviewWidget extends WidgetType {
       const target = event.target?.nodeType === 1
         ? event.target
         : event.target?.parentElement;
-      if (target?.closest?.('a,button,input,select,textarea,video,audio')) return;
+      if (
+        !this.allowSyntaxExposure &&
+        target?.closest?.('a,button,input,select,textarea,video,audio')
+      ) return;
       event.preventDefault();
       event.stopPropagation();
       const position = Math.max(0, Math.min(this.from, view.state.doc.length));
@@ -5902,6 +5915,22 @@ class MarkdownHtmlPreviewWidget extends WidgetType {
   }
 }
 
+class MarkdownHtmlHiddenSyntaxWidget extends WidgetType {
+  eq() { return true; }
+
+  toDOM() {
+    const hidden = document.createElement('span');
+    hidden.className = 'cm-markdown-html-hidden-syntax';
+    hidden.setAttribute('aria-hidden', 'true');
+    hidden.style.cssText = 'display:none!important;';
+    return hidden;
+  }
+
+  ignoreEvent() {
+    return true;
+  }
+}
+
 function buildMarkdownHtmlRenderValue(state) {
   let stateCache = markdownHtmlPreviewStateCache.get(state);
   const profile = ['wmdx', 'commonmark', 'gfm', 'obsidian'].includes(currentMarkdownProfile)
@@ -5915,9 +5944,14 @@ function buildMarkdownHtmlRenderValue(state) {
     markdownHtmlPreviewStateCache.set(state, stateCache);
   }
 
-  const candidates = currentEditorMode === 'source'
-    ? []
-    : collectMarkdownHtmlRegions(state);
+  const presentation = currentEditorMode === 'source'
+    ? { regions: [], hiddenRanges: [], blockRanges: [] }
+    : collectMarkdownHtmlPresentation(state);
+  const candidates = presentation.regions;
+  const htmlRanges = [
+    ...presentation.blockRanges,
+    ...candidates.filter(region => region.kind !== 'html-element')
+  ];
   const renderedRegions = [];
   const decorations = [];
   const selection = state.selection.main;
@@ -5926,11 +5960,14 @@ function buildMarkdownHtmlRenderValue(state) {
     syntaxExposureScope !== 'hidden';
   const exposureLayout = syntaxExposureEnabled ? markdownRenderPlan(state).semantic : null;
   for (const region of candidates) {
+    const regionLayout = region.kind === 'html-element'
+      ? { blocks: [] }
+      : exposureLayout;
     if (syntaxExposureEnabled && isSyntaxRangeActiveForCurrentExposure(
-      selection, state.doc, exposureLayout, region.from, region.to
+      selection, state.doc, regionLayout, region.from, region.to
     )) continue;
     const source = state.doc.sliceString(region.from, region.to);
-    const html = renderMarkdownHtmlRegion(source, profile);
+    const html = renderMarkdownHtmlRegion(region.renderSource ?? source, profile);
     if (!html || !markdownHtmlHasVisibleContent(html)) continue;
     decorations.push(
       Decoration.replace({
@@ -5942,10 +5979,19 @@ function buildMarkdownHtmlRenderValue(state) {
     );
     renderedRegions.push(region);
   }
+  const hiddenSyntaxRanges = presentation.hiddenRanges;
+  for (const range of hiddenSyntaxRanges) {
+    decorations.push(
+      Decoration.replace({
+        widget: new MarkdownHtmlHiddenSyntaxWidget()
+      }).range(range.from, range.to)
+    );
+  }
 
   const value = {
     decorations: decorations.length ? Decoration.set(decorations, true) : Decoration.none,
-    candidates,
+    candidates: [...candidates, ...hiddenSyntaxRanges],
+    htmlRanges,
     renderedRegions,
     mode: currentEditorMode,
     modePreference: currentModePreference,
@@ -5961,14 +6007,14 @@ export function buildPersistentLayoutDecorations(state) {
   const renderPlan = markdownRenderPlan(state);
   const doc = state.doc;
   const selection = state.selection.main;
-  const renderedHtmlRegions = buildMarkdownHtmlRenderValue(state).renderedRegions;
-  const overlapsRenderedHtml = (from, to) => renderedHtmlRegions.some(region =>
+  const rawHtmlRanges = buildMarkdownHtmlRenderValue(state).htmlRanges;
+  const overlapsRawHtml = (from, to) => rawHtmlRanges.some(region =>
     from < region.to && to > region.from
   );
   const softBreaks = (renderPlan.raw || !softBreaksAsSpaces
     ? []
     : collectMarkdownSoftBreaks(state, undefined, renderPlan.semantic))
-    .filter(softBreak => !overlapsRenderedHtml(softBreak.from, softBreak.to));
+    .filter(softBreak => !overlapsRawHtml(softBreak.from, softBreak.to));
   const softBreakContinuationLines = new Set(
     softBreaks.map(softBreak => softBreak.nextLineFrom)
   );
@@ -6053,13 +6099,13 @@ export function buildPersistentLayoutDecorations(state) {
       }).range(line.from)
     );
     if (line.contentFrom > line.from &&
-        !overlapsRenderedHtml(line.from, line.contentFrom)) {
+        !overlapsRawHtml(line.from, line.contentFrom)) {
       ranges.push(Decoration.mark({ class: 'cm-layout-prefix' }).range(line.from, line.contentFrom));
       ranges.push(Decoration.widget({ widget: new LayoutAnchorWidget('start'), side: -1 }).range(line.from));
       ranges.push(Decoration.widget({ widget: new LayoutAnchorWidget('content'), side: -1 }).range(line.contentFrom));
     }
     if (line.indentTo > line.from && line.kind !== 'code' && line.kind !== 'table' &&
-        !overlapsRenderedHtml(line.from, line.indentTo)) {
+        !overlapsRawHtml(line.from, line.indentTo)) {
       ranges.push(Decoration.mark({ class: 'cm-layout-indent' }).range(line.from, line.indentTo));
     }
     if (line.kind === 'code' && line.to > line.from &&
