@@ -101,6 +101,12 @@ test('raw HTML respects WYSIWYG syntax-exposure settings', async () => {
     const bookmarkTextFrom = bookmarkSource.indexOf('Example ');
     const bookmarkLinkTextFrom = bookmarkSource.indexOf('bookmark</STRONG>');
     const headingTextFrom = bookmarkSource.indexOf('Bookmarks bar');
+    const headingOpenFrom = bookmarkSource.indexOf('<H3 ');
+    const headingOpenTo = bookmarkSource.indexOf('>', headingOpenFrom) + 1;
+    const headingCloseFrom = bookmarkSource.indexOf('</H3>', headingOpenTo);
+    const anchorOpenFrom = bookmarkSource.indexOf('<A HREF=');
+    const anchorOpenTo = bookmarkSource.indexOf('>', anchorOpenFrom) + 1;
+    const anchorCloseFrom = bookmarkSource.indexOf('</A>', anchorOpenTo);
     const editableHtmlText = text =>
       [...content.querySelectorAll('.cm-raw-html-text')]
         .find(span => span.textContent.trim() === text);
@@ -163,20 +169,65 @@ test('raw HTML respects WYSIWYG syntax-exposure settings', async () => {
       anchor: headingTextFrom + 2,
       head: headingTextFrom + 2
     });
+    await new Promise(resolve => setTimeout(resolve, 20));
+    assert.equal(sourceText(window.document.querySelector('.cm-content')).includes('<H3 ADD_DATE='), false,
+      'a caret in heading text keeps unrelated HTML tag syntax hidden');
+    window.editorBridge.setSelectionState({
+      anchor: headingOpenFrom + 2,
+      head: headingOpenFrom + 2
+    });
     await waitForDomCondition(window,
       () => sourceText(window.document.querySelector('.cm-content')).includes('<H3 ADD_DATE='),
-      'caret exposure reveals the bookmark heading source under the caret');
+      'caret exposure reveals the opening heading tag when the caret enters that tag');
+    assert.equal(sourceText(window.document.querySelector('.cm-content')).includes('</H3>'), false,
+      'exposing an opening heading tag does not expose its closing tag');
+    window.editorBridge.setSelectionState({
+      anchor: headingOpenTo,
+      head: headingOpenTo
+    });
+    await new Promise(resolve => setTimeout(resolve, 20));
+    assert.equal(sourceText(window.document.querySelector('.cm-content')).includes('<H3 ADD_DATE='), false,
+      'the caret at the first heading character is outside the opening tag');
+    window.editorBridge.setSelectionState({
+      anchor: headingCloseFrom + 2,
+      head: headingCloseFrom + 2
+    });
+    await waitForDomCondition(window,
+      () => sourceText(window.document.querySelector('.cm-content')).includes('</H3>'),
+      'caret exposure reveals the closing heading tag independently');
+    assert.equal(sourceText(window.document.querySelector('.cm-content')).includes('<H3 ADD_DATE='), false,
+      'exposing a closing heading tag does not expose the opening tag');
     assert.equal(window.editorBridge.getEditorMode(), 'rendered', 'syntax exposure does not create a second user-facing mode');
     assert.equal(window.editorBridge.getSyntaxExposureScope(), 'caret');
     assert.equal(sourceText(window.document.querySelector('.cm-content')).includes('<A HREF='), false,
       'the sibling bookmark link remains rendered');
     window.editorBridge.setSelectionState({
-      anchor: bookmarkLinkTextFrom + 2,
-      head: bookmarkLinkTextFrom + 2
+      anchor: anchorOpenFrom + 3,
+      head: anchorOpenFrom + 3
     });
     await waitForDomCondition(window,
       () => sourceText(window.document.querySelector('.cm-content')).includes('<A HREF='),
-      'caret exposure reveals only the selected bookmark link source');
+      'caret exposure reveals the anchor opening tag under the caret');
+    assert.equal(sourceText(window.document.querySelector('.cm-content')).includes('</A>'), false,
+      'exposing an anchor opening tag does not expose its closing tag');
+    window.editorBridge.setSelectionState({
+      anchor: bookmarkTextFrom + 2,
+      head: bookmarkTextFrom + 2
+    });
+    await new Promise(resolve => setTimeout(resolve, 20));
+    assert.equal(sourceText(window.document.querySelector('.cm-content')).includes('<A HREF='), false,
+      'caret in a link label does not expose the complete anchor source');
+    assert.equal(sourceText(window.document.querySelector('.cm-content')).includes('</A>'), false,
+      'caret in a link label leaves its closing tag hidden');
+    window.editorBridge.setSelectionState({
+      anchor: anchorCloseFrom + 2,
+      head: anchorCloseFrom + 2
+    });
+    await waitForDomCondition(window,
+      () => sourceText(window.document.querySelector('.cm-content')).includes('</A>'),
+      'caret exposure reveals the anchor closing tag independently');
+    assert.equal(sourceText(window.document.querySelector('.cm-content')).includes('<A HREF='), false,
+      'exposing an anchor closing tag does not expose its opening tag');
     assert.equal(sourceText(window.document.querySelector('.cm-content')).includes('<H3 ADD_DATE='), false,
       'moving from the heading to the link hides the previous element source again');
 
@@ -208,11 +259,21 @@ test('raw HTML respects WYSIWYG syntax-exposure settings', async () => {
       anchor: firstBookmarkLabel + 2,
       head: firstBookmarkLabel + 2
     });
+    await new Promise(resolve => setTimeout(resolve, 20));
+    assert.equal(sourceText(window.document.querySelector('.cm-content'))
+      .includes('<A HREF="https://example.test/commit">Commit</A>'), false,
+    'caret in bookmark text does not expose all of its anchor syntax');
+    window.editorBridge.setSelectionState({
+      anchor: structuredBookmarkSource.indexOf('<A HREF="https://example.test/commit">') + 2,
+      head: structuredBookmarkSource.indexOf('<A HREF="https://example.test/commit">') + 2
+    });
     await waitForDomCondition(window,
       () => sourceText(window.document.querySelector('.cm-content'))
-        .includes('<A HREF="https://example.test/commit">Commit</A>'),
-      'caret exposure reveals only the bookmark element under the caret');
+        .includes('<A HREF="https://example.test/commit">'),
+      'caret in an anchor tag exposes only that tag');
     let exposedBookmarkSource = sourceText(window.document.querySelector('.cm-content'));
+    assert.equal(exposedBookmarkSource.includes('</A>'), false,
+      'the active anchor opening tag does not reveal its closing tag');
     assert.equal(exposedBookmarkSource.includes('https://example.test/commits'), false,
       'caret exposure does not reveal a sibling bookmark');
     assert.equal(exposedBookmarkSource.includes('</DL>'), false,
@@ -284,9 +345,18 @@ test('raw HTML respects WYSIWYG syntax-exposure settings', async () => {
       anchor: complexTextFrom,
       head: complexTextFrom
     });
+    await new Promise(resolve => setTimeout(resolve, 20));
+    assert.equal(sourceText(window.document.querySelector('.cm-content')).includes('<p>Block HTML'), false,
+      'caret in raw HTML text does not expose an entire parent element');
+    window.editorBridge.setSelectionState({
+      anchor: complexSource.indexOf('<strong>') + 2,
+      head: complexSource.indexOf('<strong>') + 2
+    });
     await waitForDomCondition(window,
-      () => sourceText(window.document.querySelector('.cm-content')).includes('<p>Block HTML'),
-      'moving the caret into nested HTML text exposes its containing element source');
+      () => sourceText(window.document.querySelector('.cm-content')).includes('<strong>'),
+      'caret exposure reveals only the nested HTML tag under the caret');
+    assert.equal(sourceText(window.document.querySelector('.cm-content')).includes('</strong>'), false,
+      'the matching closing tag stays hidden when only the opening tag is active');
     assert.equal(window.editorBridge.getMarkdown(), complexSource, 'syntax exposure never mutates Markdown');
     const inlineTextPosition = inlineSource.indexOf('Ctrl') + 1;
     window.editorBridge.setMarkdown(inlineSource);
@@ -294,9 +364,18 @@ test('raw HTML respects WYSIWYG syntax-exposure settings', async () => {
       anchor: inlineTextPosition,
       head: inlineTextPosition
     });
+    await new Promise(resolve => setTimeout(resolve, 20));
+    assert.equal(sourceText(window.document.querySelector('.cm-content')).includes('<kbd>Ctrl</kbd>'), false,
+      'caret in inline HTML text keeps surrounding source hidden');
+    window.editorBridge.setSelectionState({
+      anchor: inlineSource.indexOf('<kbd>') + 2,
+      head: inlineSource.indexOf('<kbd>') + 2
+    });
     await waitForDomCondition(window,
-      () => sourceText(window.document.querySelector('.cm-content')).includes('<kbd>Ctrl</kbd>'),
-      'caret exposure reveals only the selected inline HTML element');
+      () => sourceText(window.document.querySelector('.cm-content')).includes('<kbd>'),
+      'caret exposure reveals only the inline HTML tag under the caret');
+    assert.equal(sourceText(window.document.querySelector('.cm-content')).includes('</kbd>'), false,
+      'the closing inline tag stays hidden while the opening tag is exposed');
     assert.equal(sourceText(window.document.querySelector('.cm-content')).includes('<mark>highlight</mark>'), false,
       'the neighboring inline HTML element remains rendered');
     assert.ok([...window.document.querySelectorAll('.cm-raw-html-text')]
@@ -323,6 +402,7 @@ test('raw HTML respects WYSIWYG syntax-exposure settings', async () => {
     assert.equal(JSON.parse(window.editorBridge.getSelectionState()).head, 2,
       'hidden Markdown delimiters are skipped without skipping the first formatted letter');
 
+    window.editorBridge.setMarkdownSyntaxExposure('caret');
     const hardBreakSource = 'hard  \nbreak';
     window.editorBridge.setMarkdown(hardBreakSource);
     await new Promise(resolve => setTimeout(resolve, 20));
@@ -348,8 +428,41 @@ test('raw HTML respects WYSIWYG syntax-exposure settings', async () => {
       await new Promise(resolve => setTimeout(resolve, 20));
       assert.equal(JSON.parse(window.editorBridge.getSelectionState()).head, expectedPosition,
         'the caret can stop on each literal hard-break space');
+      const activeHardBreakSpaces = content.querySelector('.cm-hardbreak-spaces');
+      assert.equal(activeHardBreakSpaces?.textContent, '  ',
+        'caret entry must not remove the hard-break spaces decoration');
+      assert.equal(window.getComputedStyle(activeHardBreakSpaces).whiteSpace, 'break-spaces',
+        'caret movement preserves the hard-break spacing that stabilizes hyphenation layout');
+      assert.equal(window.getComputedStyle(activeHardBreakSpaces).hyphens, 'none',
+        'hard-break spaces must not re-enable hyphenation while traversing the break');
     }
 
+    await window.editorBridge.setEditorMode('rendered');
+    window.editorBridge.setMarkdownSyntaxExposure('hidden');
+    await new Promise(resolve => setTimeout(resolve, 20));
+    const taskListSource = '- [ ] Open task\n- [x] Completed task';
+    await window.editorBridge.applyAllPreferences({ pref_markdown_profile: 'commonmark' });
+    window.editorBridge.setMarkdown(taskListSource);
+    await new Promise(resolve => setTimeout(resolve, 20));
+    assert.equal(window.document.querySelectorAll('.cm-todo-checkbox').length, 0,
+      'task markers are literal brackets in the CommonMark-only profile');
+    assert.ok(sourceText(window.document.querySelector('.cm-content')).includes('[ ] Open task'),
+      'the CommonMark profile preserves the unsupported GFM task marker literally');
+    await window.editorBridge.applyAllPreferences({ pref_markdown_profile: 'gfm' });
+    window.editorBridge.setMarkdown(taskListSource);
+    await waitForDomCondition(window,
+      () => window.document.querySelectorAll('.cm-todo-checkbox').length === 2,
+      'GFM task items render as checkboxes when the GFM profile is selected');
+    const taskBoxes = [...window.document.querySelectorAll('.cm-todo-checkbox')];
+    assert.equal(taskBoxes[0].checked, false);
+    assert.equal(taskBoxes[1].checked, true);
+    taskBoxes[0].click();
+    await waitForDomCondition(window,
+      () => window.editorBridge.getMarkdown().startsWith('- [x] Open task'),
+      'tapping a rendered task checkbox updates its Markdown state');
+
+    window.editorBridge.setMarkdown(hardBreakSource);
+    await new Promise(resolve => setTimeout(resolve, 20));
     await window.editorBridge.setEditorMode('source');
     const sourceContent = window.document.querySelector('.cm-content');
     assert.equal(sourceText(sourceContent), hardBreakSource, 'Source displays the complete Markdown text');

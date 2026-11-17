@@ -3666,11 +3666,13 @@ export const livePreviewPlugin = ViewPlugin.fromClass(class {
             return false;
           }
 
-          if (!isPureWysiwyg && !isNodeActive && node.name === 'HardBreak') {
+          if (!isPureWysiwyg && node.name === 'HardBreak') {
             const decoration = hardBreakSyntaxDecoration(doc, node);
             if (decoration) {
-              builder.push(decoration);
-              hiddenSyntaxRanges.push(decoration);
+              if (!isNodeActive) {
+                builder.push(decoration);
+                hiddenSyntaxRanges.push(decoration);
+              }
             } else {
               const spaces = hardBreakSpacesDecoration(doc, node);
               if (spaces) builder.push(spaces);
@@ -5839,6 +5841,12 @@ function selectionTouchesMarkdownHtmlRegion(selection, region) {
     : selection.from < region.to && selection.to > region.from;
 }
 
+function selectionTouchesHtmlSourceRange(selection, range) {
+  return selection.empty
+    ? selection.head > range.from && selection.head < range.to
+    : selection.from < range.to && selection.to > range.from;
+}
+
 function markdownHtmlTextClasses(tagStack) {
   const tagClasses = (Array.isArray(tagStack) ? tagStack : [])
     .map(tag => String(tag).toLowerCase().replace(/[^a-z0-9_-]/g, '-'))
@@ -5952,7 +5960,19 @@ class MarkdownHtmlHiddenSyntaxWidget extends WidgetType {
     const hidden = document.createElement('span');
     hidden.className = 'cm-markdown-html-hidden-syntax';
     hidden.setAttribute('aria-hidden', 'true');
-    hidden.style.cssText = 'display:none!important;';
+    hidden.style.cssText = [
+      'display:inline-block!important;',
+      'box-sizing:border-box!important;',
+      'width:0!important;',
+      'min-width:0!important;',
+      'max-width:0!important;',
+      'height:1em!important;',
+      'line-height:1!important;',
+      'overflow:hidden!important;',
+      'visibility:hidden!important;',
+      'pointer-events:none!important;',
+      'vertical-align:baseline!important;'
+    ].join('');
     return hidden;
   }
 
@@ -5989,21 +6009,40 @@ function buildMarkdownHtmlRenderValue(state) {
   const syntaxExposureEnabled = currentModePreference !== 'source' &&
     currentModePreference !== 'legacy_wysiwyg' &&
     syntaxExposureScope !== 'hidden';
+  const caretHtmlSyntaxExposure = syntaxExposureEnabled &&
+    syntaxExposureScope === 'caret' &&
+    currentModePreference !== 'legacy_live_preview';
   const exposureLayout = syntaxExposureEnabled ? markdownRenderPlan(state).semantic : null;
   for (const region of candidates) {
     const htmlElement = region.kind === 'html-element' ||
       region.kind === 'html-inline-element';
     const blockElement = region.kind !== 'html-inline-element';
+    const editableHtmlElement = htmlElement && (
+      region.editableTextRanges?.length || region.entityRanges?.length
+    );
     const regionLayout = {
       blocks: [
         ...(exposureLayout?.blocks ?? []),
         ...presentation.blockRanges
       ]
     };
-    if (syntaxExposureEnabled && isSyntaxRangeActiveForCurrentExposure(
-      selection, state.doc, regionLayout, region.from, region.to
-    )) continue;
+    const regionIsActive = syntaxExposureEnabled &&
+      isSyntaxRangeActiveForCurrentExposure(
+        selection, state.doc, regionLayout, region.from, region.to
+      );
+    if (
+      regionIsActive &&
+      !(caretHtmlSyntaxExposure && editableHtmlElement)
+    ) continue;
     if (region.kind === 'html-syntax') {
+      const syntaxIsActive = syntaxExposureEnabled && (
+        caretHtmlSyntaxExposure
+          ? selectionTouchesHtmlSourceRange(selection, region)
+          : isSyntaxRangeActiveForCurrentExposure(
+              selection, state.doc, regionLayout, region.from, region.to
+            )
+      );
+      if (syntaxIsActive) continue;
       const syntaxDecoration = Decoration.replace({
         widget: new MarkdownHtmlHiddenSyntaxWidget()
       }).range(region.from, region.to);
@@ -6032,6 +6071,10 @@ function buildMarkdownHtmlRenderValue(state) {
       }
       for (const entityRange of region.entityRanges ?? []) {
         if (entityRange.to <= entityRange.from) continue;
+        if (
+          caretHtmlSyntaxExposure &&
+          selectionTouchesHtmlSourceRange(selection, entityRange)
+        ) continue;
         const entitySource = state.doc.sliceString(entityRange.from, entityRange.to);
         const entityDecoration = Decoration.replace({
           widget: new MarkdownEntityWidget(decodeMarkdownEntity(entitySource))
@@ -6041,6 +6084,10 @@ function buildMarkdownHtmlRenderValue(state) {
       }
       for (const syntaxRange of region.syntaxRanges) {
         if (syntaxRange.to <= syntaxRange.from) continue;
+        if (
+          caretHtmlSyntaxExposure &&
+          selectionTouchesHtmlSourceRange(selection, syntaxRange)
+        ) continue;
         const syntaxDecoration = Decoration.replace({
           widget: new MarkdownHtmlHiddenSyntaxWidget()
         }).range(syntaxRange.from, syntaxRange.to);
