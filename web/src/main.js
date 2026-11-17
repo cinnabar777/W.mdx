@@ -4350,6 +4350,8 @@ function mergeHiddenSyntaxRanges(docLength, ...sets) {
 function hiddenSyntaxRangesForView(view) {
   const wysiwygRanges =
     view.state.field(heightMapField, false)?.hiddenSyntaxRanges;
+  const htmlRanges =
+    view.state.field(markdownHtmlRenderField, false)?.hiddenSyntaxRanges;
   const livePreviewRanges =
     view.plugin(livePreviewPlugin)?.hiddenSyntaxRanges;
   const liveEmbeddedRanges =
@@ -4364,6 +4366,7 @@ function hiddenSyntaxRangesForView(view) {
   return mergeHiddenSyntaxRanges(
     view.state.doc.length,
     baseRanges,
+    htmlRanges,
     liveEmbeddedRanges,
     codeBlockRanges,
     footnoteRanges
@@ -4374,6 +4377,7 @@ function hiddenSyntaxRangesForState(state) {
   const ranges = [];
   const sets = [
     state.field(heightMapField, false)?.hiddenSyntaxRanges,
+    state.field(markdownHtmlRenderField, false)?.hiddenSyntaxRanges,
     state.field(liveEmbeddedDocumentField, false)?.hiddenSyntaxRanges,
     state.field(wysiwygCodeBlockField, false)?.hiddenSyntaxRanges,
     state.field(footnoteStateField, false)?.hiddenSyntaxRanges
@@ -5965,6 +5969,7 @@ function buildMarkdownHtmlRenderValue(state) {
   ];
   const renderedRegions = [];
   const decorations = [];
+  const hiddenSyntaxDecorations = [];
   const selection = state.selection.main;
   const syntaxExposureEnabled = currentModePreference !== 'source' &&
     currentModePreference !== 'legacy_wysiwyg' &&
@@ -5985,52 +5990,65 @@ function buildMarkdownHtmlRenderValue(state) {
     if (!html || !markdownHtmlHasVisibleContent(html)) continue;
     if (
       htmlElement &&
-      region.editableTextRanges?.length &&
+      (region.editableTextRanges?.length || region.entityRanges?.length) &&
       region.syntaxRanges?.length
     ) {
-      const classes = markdownHtmlTextClasses(region.tagStack);
       for (const textRange of region.editableTextRanges) {
         if (textRange.to <= textRange.from) continue;
         decorations.push(
           Decoration.mark({
             tagName: 'span',
-            class: classes,
+            class: markdownHtmlTextClasses(textRange.tagStack ?? region.tagStack),
             attributes: { 'data-raw-html-text': 'true' }
           }).range(textRange.from, textRange.to)
         );
       }
+      for (const entityRange of region.entityRanges ?? []) {
+        if (entityRange.to <= entityRange.from) continue;
+        const entitySource = state.doc.sliceString(entityRange.from, entityRange.to);
+        const entityDecoration = Decoration.replace({
+          widget: new MarkdownEntityWidget(decodeMarkdownEntity(entitySource))
+        }).range(entityRange.from, entityRange.to);
+        decorations.push(entityDecoration);
+        hiddenSyntaxDecorations.push(entityDecoration);
+      }
       for (const syntaxRange of region.syntaxRanges) {
         if (syntaxRange.to <= syntaxRange.from) continue;
+        const syntaxDecoration = Decoration.replace({
+          widget: new MarkdownHtmlHiddenSyntaxWidget()
+        }).range(syntaxRange.from, syntaxRange.to);
         decorations.push(
-          Decoration.replace({
-            widget: new MarkdownHtmlHiddenSyntaxWidget()
-          }).range(syntaxRange.from, syntaxRange.to)
+          syntaxDecoration
         );
+        hiddenSyntaxDecorations.push(syntaxDecoration);
       }
       renderedRegions.push(region);
       continue;
     }
-    decorations.push(
-      Decoration.replace({
-        widget: new MarkdownHtmlPreviewWidget(
-          html, region.from, region.to, syntaxExposureEnabled, blockElement
-        ),
-        ...(blockElement ? { block: true } : {})
-      }).range(region.from, region.to)
-    );
+    const previewDecoration = Decoration.replace({
+      widget: new MarkdownHtmlPreviewWidget(
+        html, region.from, region.to, syntaxExposureEnabled, blockElement
+      ),
+      ...(blockElement ? { block: true } : {})
+    }).range(region.from, region.to);
+    decorations.push(previewDecoration);
+    hiddenSyntaxDecorations.push(previewDecoration);
     renderedRegions.push(region);
   }
   const hiddenSyntaxRanges = presentation.hiddenRanges;
   for (const range of hiddenSyntaxRanges) {
-    decorations.push(
-      Decoration.replace({
-        widget: new MarkdownHtmlHiddenSyntaxWidget()
-      }).range(range.from, range.to)
-    );
+    const syntaxDecoration = Decoration.replace({
+      widget: new MarkdownHtmlHiddenSyntaxWidget()
+    }).range(range.from, range.to);
+    decorations.push(syntaxDecoration);
+    hiddenSyntaxDecorations.push(syntaxDecoration);
   }
 
   const value = {
     decorations: decorations.length ? Decoration.set(decorations, true) : Decoration.none,
+    hiddenSyntaxRanges: hiddenSyntaxDecorations.length
+      ? Decoration.set(hiddenSyntaxDecorations, true)
+      : Decoration.none,
     candidates: [...candidates, ...hiddenSyntaxRanges],
     htmlRanges,
     renderedRegions,
@@ -7057,6 +7075,7 @@ class CodeMirrorAdapter {
         const hiddenSyntax = mergeHiddenSyntaxRanges(
           startState.doc.length,
           startState.field(heightMapField).hiddenSyntaxRanges,
+          startState.field(markdownHtmlRenderField, false)?.hiddenSyntaxRanges,
           startState.field(wysiwygCodeBlockField, false)?.hiddenSyntaxRanges,
           startState.field(footnoteStateField, false)?.hiddenSyntaxRanges
         );

@@ -85,6 +85,86 @@ function renderSourceWithContext(element, ancestors, source) {
   return opening + source.slice(element.from, element.to) + closing;
 }
 
+function mappedRange(node, base, sourceMap) {
+  return {
+    from: base + sourceMap.mapStart(node.from),
+    to: base + sourceMap.mapEnd(node.to)
+  };
+}
+
+function createPreviewRegion(element, ancestors, source, base, sourceMap) {
+  const tagName = elementTagName(element, source);
+  return {
+    ...mappedRange(element, base, sourceMap),
+    kind: 'html-element',
+    tagName,
+    tagStack: [...ancestors.map(ancestor => elementTagName(ancestor, source)), tagName]
+      .filter(Boolean),
+    editableTextRanges: [],
+    entityRanges: [],
+    syntaxRanges: [],
+    renderSource: renderSourceWithContext(element, ancestors, source)
+  };
+}
+
+function collectEditableHtmlContent(
+  element,
+  ancestors,
+  source,
+  base,
+  sourceMap,
+  editableTextRanges,
+  entityRanges,
+  syntaxRanges,
+  previewRegions
+) {
+  const tagName = elementTagName(element, source);
+  const tagStack = [...ancestors.map(ancestor => elementTagName(ancestor, source)), tagName]
+    .filter(Boolean);
+
+  for (const child of childrenOf(element)) {
+    if (child.name === 'Element') {
+      const childTagName = elementTagName(child, source);
+      if (childTagName === 'table' || HTML_VISIBLE_VOID_ELEMENTS.has(childTagName)) {
+        previewRegions.push(createPreviewRegion(
+          child, [...ancestors, element], source, base, sourceMap
+        ));
+        continue;
+      }
+      collectEditableHtmlContent(
+        child,
+        [...ancestors, element],
+        source,
+        base,
+        sourceMap,
+        editableTextRanges,
+        entityRanges,
+        syntaxRanges,
+        previewRegions
+      );
+      continue;
+    }
+
+    if (HTML_HIDDEN_SYNTAX_NODES.has(child.name)) {
+      syntaxRanges.push(mappedRange(child, base, sourceMap));
+      continue;
+    }
+
+    if (!HTML_TEXT_NODES.has(child.name)) continue;
+    const text = source.slice(child.from, child.to);
+    if (!text || (!text.trim() && /[\r\n]/.test(text))) continue;
+    const range = {
+      ...mappedRange(child, base, sourceMap),
+      tagStack
+    };
+    if (['EntityReference', 'CharacterReference', 'InvalidEntity'].includes(child.name)) {
+      entityRanges.push(range);
+    } else {
+      editableTextRanges.push(range);
+    }
+  }
+}
+
 function sourceWithoutQuotePrefixes(source, quotePrefixes) {
   const removed = new Uint8Array(source.length);
   for (const prefix of quotePrefixes) {
@@ -126,33 +206,54 @@ function collectBlockElementRegions(element, ancestors, source, base, regions, s
   // A table is one navigable editing unit; splitting its cells would destroy
   // the visual row/column continuity that the editor preserves elsewhere.
   const keepTogether = tagName === 'table' || HTML_VISIBLE_VOID_ELEMENTS.has(tagName);
-  if (keepTogether || hasText || childElements.length === 0) {
-    const openTag = elementChildren.find(child => HTML_OPEN_TAGS.has(child.name));
-    const closeTag = [...elementChildren].reverse()
-      .find(child => HTML_CLOSE_TAGS.has(child.name));
-    regions.push({
-      from: base + sourceMap.mapStart(element.from),
-      to: base + sourceMap.mapEnd(element.to),
-      kind: 'html-element',
-      tagName,
-      tagStack: [...ancestors.map(ancestor => elementTagName(ancestor, source)), tagName]
-        .filter(Boolean),
-      editableTextRanges: childElements.length === 0
-        ? elementChildren
-          .filter(child => ['Text', 'ScriptText', 'StyleText', 'TextareaText'].includes(child.name))
-          .map(child => ({
-            from: base + sourceMap.mapStart(child.from),
-            to: base + sourceMap.mapEnd(child.to)
-          }))
-        : [],
-      syntaxRanges: [openTag, closeTag]
-        .filter(Boolean)
-        .map(node => ({
-          from: base + sourceMap.mapStart(node.from),
-          to: base + sourceMap.mapEnd(node.to)
-        })),
-      renderSource: renderSourceWithContext(element, ancestors, source)
-    });
+  if (keepTogether) {
+    regions.push(createPreviewRegion(element, ancestors, source, base, sourceMap));
+    return;
+  }
+
+  // Keep text-bearing containers (and anchors around nested inline content)
+  // editable. Only their tags are hidden; nested text keeps its own HTML style.
+  if (hasText || tagName === 'a' || childElements.length === 0) {
+    const editableTextRanges = [];
+    const entityRanges = [];
+    const syntaxRanges = [];
+    const previewRegions = [];
+    collectEditableHtmlContent(
+      element,
+      ancestors,
+      source,
+      base,
+      sourceMap,
+      editableTextRanges,
+      entityRanges,
+      syntaxRanges,
+      previewRegions
+    );
+
+    if (editableTextRanges.length || entityRanges.length) {
+      regions.push({
+        ...mappedRange(element, base, sourceMap),
+        kind: 'html-element',
+        tagName,
+        tagStack: [...ancestors.map(ancestor => elementTagName(ancestor, source)), tagName]
+          .filter(Boolean),
+        editableTextRanges,
+        entityRanges,
+        syntaxRanges,
+        renderSource: renderSourceWithContext(element, ancestors, source)
+      });
+      regions.push(...previewRegions);
+      return;
+    }
+
+    if (previewRegions.length) {
+      regions.push(...previewRegions);
+      return;
+    }
+
+    // Empty elements are still presented as a single HTML object when there
+    // is meaningful rendered content but no text node to edit.
+    regions.push(createPreviewRegion(element, ancestors, source, base, sourceMap));
     return;
   }
 
@@ -195,7 +296,8 @@ function collectHtmlBlockPresentation(blockSource, base, quotePrefixes = []) {
         hiddenRanges.push({ from, to, kind: 'html-syntax' });
       } else if (
         HTML_TEXT_NODES.has(node.name) &&
-        !sourceMap.source.slice(node.from, node.to).trim()
+        !sourceMap.source.slice(node.from, node.to).trim() &&
+        /[\r\n]/.test(sourceMap.source.slice(node.from, node.to))
       ) {
         const whitespace = sourceMap.source.slice(node.from, node.to);
         for (const match of whitespace.matchAll(/[ \t]+/g)) {
@@ -301,15 +403,37 @@ export function collectMarkdownHtmlPresentation(state) {
       continue;
     }
     const existing = nonOverlapping[overlapIndex];
+    const containedPreview = existing.editableTextRanges?.length &&
+      region.from >= existing.from && region.to <= existing.to &&
+      !region.editableTextRanges?.length && !region.entityRanges?.length;
+    if (containedPreview) {
+      nonOverlapping.push(region);
+      continue;
+    }
     if (region.from <= existing.from && region.to >= existing.to) {
       nonOverlapping[overlapIndex] = region;
     }
   }
   const renderedRegions = nonOverlapping.sort((a, b) => a.from - b.from);
   const nonOverlappingHiddenRanges = hiddenRanges
-    .filter(range => !renderedRegions.some(region =>
-      range.from < region.to && range.to > region.from
-    ))
+    .filter(range => !renderedRegions.some(region => {
+      if (range.from >= region.to || range.to <= region.from) return false;
+      const hasEditableText = region.editableTextRanges?.length ||
+        region.entityRanges?.length;
+      if (
+        hasEditableText &&
+        ['html-whitespace', 'markdown-container-prefix'].includes(range.kind)
+      ) {
+        const textRanges = [
+          ...(region.editableTextRanges ?? []),
+          ...(region.entityRanges ?? [])
+        ];
+        return textRanges.some(textRange =>
+          range.from < textRange.to && range.to > textRange.from
+        );
+      }
+      return true;
+    }))
     .sort((a, b) => a.from - b.from);
   return {
     regions: renderedRegions,
