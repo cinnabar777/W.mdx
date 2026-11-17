@@ -110,8 +110,10 @@ test('raw HTML in Markdown renders safely in WYSIWYG modes and reveals source wh
         cancelable: true
       }));
       await new Promise(resolve => setTimeout(resolve, 20));
-      assert.equal(window.document.querySelectorAll('.cm-markdown-html-preview').length, 1,
-        mode + ' reveals the tapped HTML source for editing');
+      assert.equal(window.document.querySelectorAll('.cm-markdown-html-preview').length, 2,
+        mode + ' reveals the tapped block while other HTML previews remain rendered');
+      assert.ok(sourceText(window.document.querySelector('.cm-content')).includes('<div class="raw-html-block">'),
+        mode + ' exposes the tapped block source in the editor');
       assert.equal(window.editorBridge.getMarkdown(), source, mode + ' source reveal does not mutate text');
     }
 
