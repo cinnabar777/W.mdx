@@ -78,6 +78,7 @@ import {
   exportMarkdown
 } from './markdownConversion.mjs';
 import { renderMarkdownHtml } from './htmlExport.mjs';
+import { collectMarkdownHtmlRegions } from './markdownHtmlRegions.mjs';
 import { applyMarkdownDialectProfile } from './markdownDialectPreferences.mjs';
 import { lintMarkdown } from './markdownLinter.mjs';
 import { countDocumentText, findTocMatchRanges, getTocSearchState } from './tocSearch.js';
@@ -3011,6 +3012,7 @@ class EmbeddedDocumentWidget extends WidgetType {
             ]
           : []),
         semanticLayoutField,
+        markdownHtmlRenderField,
         livePreviewPlugin,
         tableStateField,
         wysiwygCodeBlockField,
@@ -3406,6 +3408,11 @@ export const livePreviewPlugin = ViewPlugin.fromClass(class {
     const isPureWysiwyg = renderPlan.wysiwyg;
     const doc = view.state.doc;
     const layout = renderPlan.semantic;
+    const htmlRenderValue = view.state.field(markdownHtmlRenderField, false);
+    const renderedHtmlRegions = htmlRenderValue?.renderedRegions ?? [];
+    const isRenderedHtmlRange = (from, to) => renderedHtmlRegions.some(region =>
+      from >= region.from && to <= region.to
+    );
     const orderedListLabels = collectOrderedListMarkerLabels(tree, doc);
     const linkReferenceTargets = collectMarkdownReferenceTargets(doc, tree);
     const markdownLinkRanges = [];
@@ -3447,6 +3454,15 @@ export const livePreviewPlugin = ViewPlugin.fromClass(class {
       )
     ).values()];
 
+    for (const ranges of [underlineSyntaxRanges, colorSyntaxRanges, superscriptSyntaxRanges, htmlInlineFormatRanges]) {
+      for (let index = ranges.length - 1; index >= 0; index--) {
+        const range = ranges[index];
+        const rangeFrom = range.wrapperFrom ?? range.from;
+        const rangeTo = range.wrapperTo ?? range.to;
+        if (isRenderedHtmlRange(rangeFrom, rangeTo)) ranges.splice(index, 1);
+      }
+    }
+
     const calloutOpenerInfo = layout.calloutOpeners;
     const calloutLineAttributes = new Map(
       [...layout.lines].filter(([, line]) => line.callout).map(([from, line]) => [from, line.callout])
@@ -3458,6 +3474,7 @@ export const livePreviewPlugin = ViewPlugin.fromClass(class {
 
       for (let lineNumber = firstVisibleLine; lineNumber <= lastVisibleLine; lineNumber++) {
         const line = doc.line(lineNumber);
+        if (renderedHtmlRegions.some(region => line.from >= region.from && line.to <= region.to)) continue;
         const semantic = layout.lines.get(line.from);
         if (!semantic || semantic.kind === 'code' || semantic.kind === 'table') continue;
 
@@ -3554,6 +3571,7 @@ export const livePreviewPlugin = ViewPlugin.fromClass(class {
         from,
         to,
         enter: (node) => {
+          if (isRenderedHtmlRange(node.from, node.to)) return false;
           const line = view.state.doc.lineAt(node.from);
           const isNodeActive = isSourceMode || (!isPureWysiwyg &&
             isSyntaxRangeActiveForCurrentExposure(
@@ -5094,6 +5112,10 @@ function buildHeightMapValue(state) {
   const layout = renderPlan.semantic;
   const wmdxOrderedListItems = layout.orderedItems;
   const linkReferenceTargets = collectMarkdownReferenceTargets(doc, tree);
+  const renderedHtmlRegions = buildMarkdownHtmlRenderValue(state).renderedRegions;
+  const isRenderedHtmlRange = (from, to) => renderedHtmlRegions.some(region =>
+    from >= region.from && to <= region.to
+  );
   const replacements = [];
   const hiddenSyntaxRanges = [];
 
@@ -5109,6 +5131,7 @@ function buildHeightMapValue(state) {
 
   for (let lineNumber = 1; lineNumber <= doc.lines; lineNumber++) {
     const line = doc.line(lineNumber);
+    if (renderedHtmlRegions.some(region => line.from >= region.from && line.to <= region.to)) continue;
     const semantic = layout.lines.get(line.from);
     if (semantic?.kind === 'code' || semantic?.kind === 'table') continue;
 
@@ -5144,6 +5167,7 @@ function buildHeightMapValue(state) {
     from: 0,
     to: doc.length,
     enter: (node) => {
+      if (isRenderedHtmlRange(node.from, node.to)) return false;
       const line = doc.lineAt(node.from);
 
       const headingLevel = getHeadingLevel(node.name);
@@ -5587,9 +5611,12 @@ function buildLiveEmbeddedDocumentValue(state) {
   const decorations = [];
   const hiddenSyntaxRanges = [];
   const doc = state.doc;
+  const renderedHtmlRegions = buildMarkdownHtmlRenderValue(state).renderedRegions;
   syntaxTree(state).iterate({
     enter: node => {
-      if (node.name !== 'Image') return;
+      if (node.name !== 'Image' || renderedHtmlRegions.some(region =>
+        node.from >= region.from && node.to <= region.to
+      )) return;
       const raw = doc.sliceString(node.from, node.to);
       const embeddedLink = parseMarkdownEmbeddedDocumentLink(raw);
       if (!embeddedLink || !isStandaloneEmbeddedDocument(doc, node, raw)) return;
@@ -5650,9 +5677,12 @@ function buildLivePreviewCodeSpanValue(state) {
 
   const doc = state.doc;
   const decorations = [];
+  const renderedHtmlRegions = buildMarkdownHtmlRenderValue(state).renderedRegions;
   syntaxTree(state).iterate({
     enter(node) {
-      if (node.name !== 'InlineCode') return;
+      if (node.name !== 'InlineCode' || renderedHtmlRegions.some(region =>
+        node.from >= region.from && node.to <= region.to
+      )) return;
       const codeSpan = markdownCodeSpanDisplayText(doc, node);
       if (!codeSpan?.hasLineBreaks || !codeSpan.needsNormalization) return;
 
@@ -5770,14 +5800,156 @@ class MarkdownSoftBreakSpaceWidget extends WidgetType {
   }
 }
 
+const markdownHtmlPreviewStateCache = new WeakMap();
+const markdownHtmlPreviewOutputCache = new Map();
+const MARKDOWN_HTML_PREVIEW_CACHE_LIMIT = 96;
+
+function selectionTouchesMarkdownHtmlRegion(selection, region) {
+  return selection.empty
+    ? selection.head >= region.from && selection.head <= region.to
+    : selection.from < region.to && selection.to > region.from;
+}
+
+function renderMarkdownHtmlRegion(source, profile) {
+  const key = profile + '\u0000' + source;
+  if (markdownHtmlPreviewOutputCache.has(key)) {
+    return markdownHtmlPreviewOutputCache.get(key);
+  }
+  let html = '';
+  try {
+    const result = renderMarkdownHtml(source, {
+      profile,
+      sourceDialect: profile,
+      window
+    });
+    html = String(result?.html ?? '');
+  } catch (_error) {
+    html = '';
+  }
+  markdownHtmlPreviewOutputCache.set(key, html);
+  if (markdownHtmlPreviewOutputCache.size > MARKDOWN_HTML_PREVIEW_CACHE_LIMIT) {
+    markdownHtmlPreviewOutputCache.delete(markdownHtmlPreviewOutputCache.keys().next().value);
+  }
+  return html;
+}
+
+function markdownHtmlHasVisibleContent(html) {
+  const template = document.createElement('template');
+  template.innerHTML = html;
+  return Boolean(
+    template.content.textContent.trim() ||
+    template.content.querySelector('img, video, audio, table, hr, br, svg, canvas, input, details, summary')
+  );
+}
+
+class MarkdownHtmlPreviewWidget extends WidgetType {
+  constructor(html, from, to) {
+    super();
+    this.html = html;
+    this.from = from;
+    this.to = to;
+  }
+
+  eq(other) {
+    return other instanceof MarkdownHtmlPreviewWidget &&
+      other.html === this.html && other.from === this.from && other.to === this.to;
+  }
+
+  toDOM(view) {
+    const wrapper = document.createElement('div');
+    wrapper.className = 'cm-markdown-html-preview';
+    wrapper.setAttribute('aria-label', 'Rendered HTML. Tap to edit its Markdown source.');
+    wrapper.setAttribute('data-html-source-from', String(this.from));
+    wrapper.tabIndex = 0;
+    wrapper.style.cssText =
+      'display:block;max-width:100%;overflow-x:auto;box-sizing:border-box;margin:0.25em 0;color:inherit;font:inherit;';
+    wrapper.innerHTML = this.html;
+
+    const revealSource = event => {
+      const target = event.target?.nodeType === 1
+        ? event.target
+        : event.target?.parentElement;
+      if (target?.closest?.('a,button,input,select,textarea,video,audio')) return;
+      event.preventDefault();
+      event.stopPropagation();
+      const position = Math.max(0, Math.min(this.from, view.state.doc.length));
+      view.dispatch({
+        selection: EditorSelection.cursor(position),
+        scrollIntoView: true,
+        userEvent: 'select.markdown-html-source'
+      });
+      view.focus();
+    };
+    wrapper.addEventListener('pointerdown', revealSource, true);
+    wrapper.addEventListener('keydown', event => {
+      if (event.key !== 'Enter' && event.key !== ' ') return;
+      revealSource(event);
+    });
+    return wrapper;
+  }
+
+  ignoreEvent(event) {
+    return event.type === 'pointerdown';
+  }
+}
+
+function buildMarkdownHtmlRenderValue(state) {
+  let stateCache = markdownHtmlPreviewStateCache.get(state);
+  const profile = ['wmdx', 'commonmark', 'gfm', 'obsidian'].includes(currentMarkdownProfile)
+    ? currentMarkdownProfile
+    : 'commonmark';
+  const cacheKey = [currentEditorMode, currentModePreference, profile].join('|');
+  if (stateCache?.has(cacheKey)) return stateCache.get(cacheKey);
+  if (!stateCache) {
+    stateCache = new Map();
+    markdownHtmlPreviewStateCache.set(state, stateCache);
+  }
+
+  const candidates = currentEditorMode === 'source'
+    ? []
+    : collectMarkdownHtmlRegions(state);
+  const renderedRegions = [];
+  const decorations = [];
+  const selection = state.selection.main;
+  for (const region of candidates) {
+    if (selectionTouchesMarkdownHtmlRegion(selection, region)) continue;
+    const source = state.doc.sliceString(region.from, region.to);
+    const html = renderMarkdownHtmlRegion(source, profile);
+    if (!html || !markdownHtmlHasVisibleContent(html)) continue;
+    decorations.push(
+      Decoration.replace({
+        widget: new MarkdownHtmlPreviewWidget(html, region.from, region.to),
+        block: true
+      }).range(region.from, region.to)
+    );
+    renderedRegions.push(region);
+  }
+
+  const value = {
+    decorations: decorations.length ? Decoration.set(decorations, true) : Decoration.none,
+    candidates,
+    renderedRegions,
+    mode: currentEditorMode,
+    modePreference: currentModePreference,
+    profile
+  };
+  stateCache.set(cacheKey, value);
+  return value;
+}
+
 export function buildPersistentLayoutDecorations(state) {
   const ranges = [];
   const renderPlan = markdownRenderPlan(state);
   const doc = state.doc;
   const selection = state.selection.main;
-  const softBreaks = renderPlan.raw || !softBreaksAsSpaces
+  const renderedHtmlRegions = buildMarkdownHtmlRenderValue(state).renderedRegions;
+  const overlapsRenderedHtml = (from, to) => renderedHtmlRegions.some(region =>
+    from < region.to && to > region.from
+  );
+  const softBreaks = (renderPlan.raw || !softBreaksAsSpaces
     ? []
-    : collectMarkdownSoftBreaks(state, undefined, renderPlan.semantic);
+    : collectMarkdownSoftBreaks(state, undefined, renderPlan.semantic))
+    .filter(softBreak => !overlapsRenderedHtml(softBreak.from, softBreak.to));
   const softBreakContinuationLines = new Set(
     softBreaks.map(softBreak => softBreak.nextLineFrom)
   );
@@ -5861,12 +6033,14 @@ export function buildPersistentLayoutDecorations(state) {
         }
       }).range(line.from)
     );
-    if (line.contentFrom > line.from) {
+    if (line.contentFrom > line.from &&
+        !overlapsRenderedHtml(line.from, line.contentFrom)) {
       ranges.push(Decoration.mark({ class: 'cm-layout-prefix' }).range(line.from, line.contentFrom));
       ranges.push(Decoration.widget({ widget: new LayoutAnchorWidget('start'), side: -1 }).range(line.from));
       ranges.push(Decoration.widget({ widget: new LayoutAnchorWidget('content'), side: -1 }).range(line.contentFrom));
     }
-    if (line.indentTo > line.from && line.kind !== 'code' && line.kind !== 'table') {
+    if (line.indentTo > line.from && line.kind !== 'code' && line.kind !== 'table' &&
+        !overlapsRenderedHtml(line.from, line.indentTo)) {
       ranges.push(Decoration.mark({ class: 'cm-layout-indent' }).range(line.from, line.indentTo));
     }
     if (line.kind === 'code' && line.to > line.from &&
@@ -5935,6 +6109,33 @@ const semanticLayoutField = StateField.define({
   }
 });
 
+const markdownHtmlRenderField = StateField.define({
+  create: buildMarkdownHtmlRenderValue,
+  update(current, tr) {
+    const refresh = tr.effects.some(effect =>
+      effect.is(heightMapRefreshEffect) || effect.is(typographySettingsEffect)
+    );
+    const activeProfile = ['wmdx', 'commonmark', 'gfm', 'obsidian'].includes(currentMarkdownProfile)
+      ? currentMarkdownProfile
+      : 'commonmark';
+    const modeChanged = current.mode !== currentEditorMode ||
+      current.modePreference !== currentModePreference ||
+      current.profile !== activeProfile;
+    if (
+      tr.docChanged ||
+      refresh ||
+      modeChanged ||
+      syntaxTree(tr.startState) !== syntaxTree(tr.state)
+    ) return buildMarkdownHtmlRenderValue(tr.state);
+    if (tr.selection !== undefined && current.candidates.some(region =>
+      selectionTouchesMarkdownHtmlRegion(tr.startState.selection.main, region) ||
+      selectionTouchesMarkdownHtmlRegion(tr.state.selection.main, region)
+    )) return buildMarkdownHtmlRenderValue(tr.state);
+    return current;
+  },
+  provide: field => EditorView.decorations.from(field, value => value.decorations)
+});
+
 export const persistentLayoutField = StateField.define({
   create(state) {
     return buildPersistentLayoutDecorations(state);
@@ -5949,10 +6150,16 @@ export const persistentLayoutField = StateField.define({
       currentEditorMode === 'live_preview' &&
       activeSyntaxExposureScope !== 'hidden' &&
       tr.selection !== undefined;
+    const htmlExposureSelectionChanged = tr.selection !== undefined &&
+      buildMarkdownHtmlRenderValue(tr.startState).candidates.some(region =>
+        selectionTouchesMarkdownHtmlRegion(tr.startState.selection.main, region) ||
+        selectionTouchesMarkdownHtmlRegion(tr.state.selection.main, region)
+      );
     if (
       !tr.docChanged &&
       !refresh &&
       !tableExposureSelectionChanged &&
+      !htmlExposureSelectionChanged &&
       syntaxTree(tr.startState) === syntaxTree(tr.state)
     ) return current;
     return buildPersistentLayoutDecorations(tr.state);
@@ -6688,6 +6895,7 @@ class CodeMirrorAdapter {
             refreshOpenTocPanel();
           }
         }),
+        markdownHtmlRenderField,
         tableStateField,
         wysiwygCodeBlockField,
         footnoteStateField,
