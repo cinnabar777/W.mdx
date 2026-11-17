@@ -85,11 +85,40 @@ function renderSourceWithContext(element, ancestors, source) {
   return opening + source.slice(element.from, element.to) + closing;
 }
 
-function collectBlockElementRegions(element, ancestors, source, base, regions) {
+function sourceWithoutQuotePrefixes(source, quotePrefixes) {
+  const removed = new Uint8Array(source.length);
+  for (const prefix of quotePrefixes) {
+    for (let position = prefix.from; position < prefix.to; position++) {
+      if (position >= 0 && position < removed.length) removed[position] = 1;
+    }
+  }
+
+  let normalized = '';
+  const originalOffsets = [];
+  for (let position = 0; position < source.length; position++) {
+    if (removed[position]) continue;
+    normalized += source[position];
+    originalOffsets.push(position);
+  }
+  return {
+    source: normalized,
+    mapStart(position) {
+      return originalOffsets[position] ?? source.length;
+    },
+    mapEnd(position) {
+      return position > 0
+        ? (originalOffsets[position - 1] ?? source.length - 1) + 1
+        : 0;
+    }
+  };
+}
+
+function collectBlockElementRegions(element, ancestors, source, base, regions, sourceMap) {
   if (!hasVisibleContent(element, source)) return;
 
   const tagName = elementTagName(element, source);
-  const childElements = childrenOf(element).filter(child =>
+  const elementChildren = childrenOf(element);
+  const childElements = elementChildren.filter(child =>
     child.name === 'Element' && hasVisibleContent(child, source)
   );
   const hasText = hasDirectVisibleText(element, source);
@@ -98,27 +127,52 @@ function collectBlockElementRegions(element, ancestors, source, base, regions) {
   // the visual row/column continuity that the editor preserves elsewhere.
   const keepTogether = tagName === 'table' || HTML_VISIBLE_VOID_ELEMENTS.has(tagName);
   if (keepTogether || hasText || childElements.length === 0) {
+    const openTag = elementChildren.find(child => HTML_OPEN_TAGS.has(child.name));
+    const closeTag = [...elementChildren].reverse()
+      .find(child => HTML_CLOSE_TAGS.has(child.name));
     regions.push({
-      from: base + element.from,
-      to: base + element.to,
+      from: base + sourceMap.mapStart(element.from),
+      to: base + sourceMap.mapEnd(element.to),
       kind: 'html-element',
+      tagName,
+      tagStack: [...ancestors.map(ancestor => elementTagName(ancestor, source)), tagName]
+        .filter(Boolean),
+      editableTextRanges: childElements.length === 0
+        ? elementChildren
+          .filter(child => ['Text', 'ScriptText', 'StyleText', 'TextareaText'].includes(child.name))
+          .map(child => ({
+            from: base + sourceMap.mapStart(child.from),
+            to: base + sourceMap.mapEnd(child.to)
+          }))
+        : [],
+      syntaxRanges: [openTag, closeTag]
+        .filter(Boolean)
+        .map(node => ({
+          from: base + sourceMap.mapStart(node.from),
+          to: base + sourceMap.mapEnd(node.to)
+        })),
       renderSource: renderSourceWithContext(element, ancestors, source)
     });
     return;
   }
 
   for (const child of childElements) {
-    collectBlockElementRegions(child, [...ancestors, element], source, base, regions);
+    collectBlockElementRegions(
+      child, [...ancestors, element], source, base, regions, sourceMap
+    );
   }
 }
 
-function collectHtmlBlockPresentation(blockSource, base) {
-  const htmlTree = htmlLanguage.parser.parse(blockSource);
+function collectHtmlBlockPresentation(blockSource, base, quotePrefixes = []) {
+  const sourceMap = sourceWithoutQuotePrefixes(blockSource, quotePrefixes);
+  const htmlTree = htmlLanguage.parser.parse(sourceMap.source);
   const regions = [];
   const hiddenRanges = [];
   const visitElements = (node, ancestors = []) => {
     if (node.name === 'Element') {
-      collectBlockElementRegions(node, ancestors, blockSource, base, regions);
+      collectBlockElementRegions(
+        node, ancestors, sourceMap.source, base, regions, sourceMap
+      );
       return;
     }
     for (const child of childrenOf(node)) visitElements(child, ancestors);
@@ -131,8 +185,8 @@ function collectHtmlBlockPresentation(blockSource, base) {
 
   htmlTree.iterate({
     enter(node) {
-      const from = base + node.from;
-      const to = base + node.to;
+      const from = base + sourceMap.mapStart(node.from);
+      const to = base + sourceMap.mapEnd(node.to);
       const insideRenderedElement = regions.some(region =>
         from >= region.from && to <= region.to
       );
@@ -141,9 +195,18 @@ function collectHtmlBlockPresentation(blockSource, base) {
         hiddenRanges.push({ from, to, kind: 'html-syntax' });
       } else if (
         HTML_TEXT_NODES.has(node.name) &&
-        !blockSource.slice(node.from, node.to).trim()
+        !sourceMap.source.slice(node.from, node.to).trim()
       ) {
-        hiddenRanges.push({ from, to, kind: 'html-whitespace' });
+        const whitespace = sourceMap.source.slice(node.from, node.to);
+        for (const match of whitespace.matchAll(/[ \t]+/g)) {
+          const start = node.from + match.index;
+          const end = start + match[0].length;
+          hiddenRanges.push({
+            from: base + sourceMap.mapStart(start),
+            to: base + sourceMap.mapEnd(end),
+            kind: 'html-whitespace'
+          });
+        }
       }
     }
   });
@@ -156,12 +219,32 @@ export function collectMarkdownHtmlPresentation(state) {
   const hiddenRanges = [];
   const htmlBlocks = [];
   const inlineContainers = new Map();
+  const quoteMarks = [];
+  tree.iterate({
+    enter: node => {
+      if (node.name === 'QuoteMark') quoteMarks.push({ from: node.from, to: node.to });
+    }
+  });
   tree.iterate({
     enter(node) {
       if (node.name !== 'HTMLBlock' || node.to <= node.from) return;
       htmlBlocks.push({ from: node.from, to: node.to });
       const source = state.doc.sliceString(node.from, node.to);
-      const htmlBlock = collectHtmlBlockPresentation(source, node.from);
+      const quotePrefixes = quoteMarks
+        .filter(mark => mark.from >= node.from && mark.to <= node.to)
+        .map(mark => ({
+          from: mark.from - node.from,
+          to: mark.to - node.from +
+            (/^[ \t]/.test(state.doc.sliceString(mark.to, Math.min(mark.to + 1, node.to))) ? 1 : 0)
+        }));
+      const htmlBlock = collectHtmlBlockPresentation(source, node.from, quotePrefixes);
+      for (const prefix of quotePrefixes) {
+        hiddenRanges.push({
+          from: node.from + prefix.from,
+          to: node.from + prefix.to,
+          kind: 'markdown-container-prefix'
+        });
+      }
       regions.push(...htmlBlock.regions);
       hiddenRanges.push(...htmlBlock.hiddenRanges);
     }

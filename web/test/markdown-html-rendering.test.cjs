@@ -37,8 +37,8 @@ test('raw HTML respects WYSIWYG syntax-exposure settings', async () => {
   });
   const window = dom.window;
   const rect = () => ({
-    x: 0, y: 0, width: 640, height: 480,
-    top: 0, right: 640, bottom: 480, left: 0,
+    x: 0, y: 0, width: 640, height: 2400,
+    top: 0, right: 640, bottom: 2400, left: 0,
     toJSON() { return this; }
   });
   window.ResizeObserver = class { observe() {} disconnect() {} unobserve() {} };
@@ -59,6 +59,18 @@ test('raw HTML respects WYSIWYG syntax-exposure settings', async () => {
     }
     return rect();
   };
+  Object.defineProperty(window.HTMLElement.prototype, 'clientHeight', {
+    configurable: true,
+    get() { return this.classList?.contains('cm-scroller') ? 2400 : 0; }
+  });
+  Object.defineProperty(window.HTMLElement.prototype, 'clientWidth', {
+    configurable: true,
+    get() { return this.classList?.contains('cm-scroller') ? 640 : 0; }
+  });
+  Object.defineProperty(window.HTMLElement.prototype, 'scrollHeight', {
+    configurable: true,
+    get() { return this.classList?.contains('cm-scroller') ? 2400 : 0; }
+  });
   window.Range.prototype.getBoundingClientRect = rect;
   window.Range.prototype.getClientRects = () => [];
   window.AndroidNative = {
@@ -76,128 +88,137 @@ test('raw HTML respects WYSIWYG syntax-exposure settings', async () => {
       () => Boolean(window.editorBridge && window.document.querySelector('.cm-content')),
       'the Markdown editor mounts');
 
-    const source = [
-      '<div class="raw-html-block"><p>Block HTML <strong>renders</strong>.</p></div>',
-      '',
-      '<DL><p>',
-      '    <DT><H3 ADD_DATE="1777481312" LAST_MODIFIED="0" PERSONAL_TOOLBAR_FOLDER="true">Bookmarks bar</H3>',
-      '    <DL><p>',
-      '        <DT><A HREF="https://example.test/">Example bookmark</A>',
-      '    </DL><p>',
-      '</DL><p>',
-      '',
-      'Inline HTML <kbd>Ctrl</kbd> and <mark>highlight</mark>.',
-      '',
-      '<script>window.__wmdxRawHtmlExecuted = true;</script>',
-      '',
-      'Safe text after the HTML.'
-    ].join('\n');
-
-    window.editorBridge.setMarkdown(source);
-    await new Promise(resolve => setTimeout(resolve, 20));
     await window.editorBridge.setEditorMode('rendered');
     window.editorBridge.setMarkdownSyntaxExposure('hidden');
     await new Promise(resolve => setTimeout(resolve, 20));
     assert.equal(window.editorBridge.getEditorMode(), 'rendered', 'the user-facing editor mode is WYSIWYG');
     assert.equal(window.editorBridge.getSyntaxExposureScope(), 'hidden', 'syntax exposure starts hidden');
-    const wysiwygPreviews = [...window.document.querySelectorAll('.cm-markdown-html-preview')];
-    assert.ok(wysiwygPreviews.length >= 4,
-      'WYSIWYG renders independent HTML children, inline HTML, and the regular block');
-    const inlineHtmlPreviews = wysiwygPreviews.filter(preview =>
-      preview.querySelector('kbd,mark')
-    );
-    assert.equal(inlineHtmlPreviews.length, 2,
-      'separate inline HTML elements receive separate preview widgets');
-    assert.ok(inlineHtmlPreviews.every(preview =>
-      preview.tagName === 'SPAN' && preview.classList.contains('is-inline')
-    ), 'inline HTML previews remain inline instead of becoming paragraph-sized blocks');
-    assert.ok(wysiwygPreviews.some(preview => preview.querySelector('.raw-html-block')),
-      'WYSIWYG renders HTML block elements');
-    assert.ok(wysiwygPreviews.some(preview => preview.querySelector('kbd')),
-      'WYSIWYG renders inline HTML elements');
-    assert.ok(wysiwygPreviews.some(preview =>
-      preview.querySelector('h3')?.textContent.trim() === 'Bookmarks bar'
-    ), 'WYSIWYG renders the bookmark folder heading independently');
-    assert.ok(wysiwygPreviews.some(preview =>
-      preview.querySelector('a[href="https://example.test/"]')?.textContent.trim() === 'Example bookmark'
-    ), 'WYSIWYG renders the bookmark link independently');
-    assert.equal(sourceText(window.document.querySelector('.cm-content')).includes('<DL>'), false,
-      'WYSIWYG hides the structural bookmark wrapper tags');
-    assert.equal(wysiwygPreviews.some(preview => preview.querySelector('script')), false,
-      'WYSIWYG never inserts active script elements');
-    assert.equal(window.__wmdxRawHtmlExecuted, undefined, 'WYSIWYG does not execute raw HTML scripts');
-    wysiwygPreviews.find(preview => preview.querySelector('h3'))
-      .dispatchEvent(new window.MouseEvent('pointerdown', { bubbles: true, cancelable: true }));
+    const bookmarkSource =
+      '<DL><p><DT><H3 ADD_DATE="1777481312" LAST_MODIFIED="0" PERSONAL_TOOLBAR_FOLDER="true">Bookmarks bar</H3><DL><p><DT><A HREF="https://example.test/">Example bookmark</A></DL></DL>';
+    window.editorBridge.setMarkdown(bookmarkSource);
     await new Promise(resolve => setTimeout(resolve, 20));
-    assert.equal(window.document.querySelectorAll('.cm-markdown-html-preview').length, wysiwygPreviews.length,
-      'tapping WYSIWYG HTML does not expose its source when syntax exposure is hidden');
-    assert.equal(sourceText(window.document.querySelector('.cm-content')).includes('<H3 ADD_DATE='), false,
-      'WYSIWYG keeps the bookmark heading rendered at the caret');
-    assert.equal(window.editorBridge.getMarkdown(), source, 'WYSIWYG interaction leaves Markdown unchanged');
+    let content = window.document.querySelector('.cm-content');
+    const bookmarkTextFrom = bookmarkSource.indexOf('Example bookmark');
+    const bookmarkLinkTextFrom = bookmarkTextFrom;
+    const headingTextFrom = bookmarkSource.indexOf('Bookmarks bar');
+    const editableHtmlText = text =>
+      [...content.querySelectorAll('.cm-raw-html-text')]
+        .find(span => span.textContent.trim() === text);
+    assert.ok(editableHtmlText('Bookmarks bar')?.classList.contains('cm-raw-html-h3'),
+      'bookmark headings render with HTML styling while remaining editor text');
+    assert.ok(editableHtmlText('Example bookmark')?.classList.contains('cm-raw-html-a'),
+      'bookmark labels render with link styling while remaining editor text');
+    assert.equal(sourceText(content).includes('<DL>'), false,
+      'WYSIWYG hides structural bookmark wrapper tags');
+    assert.equal(sourceText(content).includes('<A HREF='), false,
+      'WYSIWYG hides the anchor source while syntax exposure is off');
+    window.editorBridge.setSelectionState({
+      anchor: bookmarkTextFrom,
+      head: bookmarkTextFrom
+    });
+    content.focus();
+    content.dispatchEvent(new window.KeyboardEvent('keydown', {
+      key: 'ArrowRight',
+      keyCode: 39,
+      which: 39,
+      bubbles: true,
+      cancelable: true
+    }));
+    await new Promise(resolve => setTimeout(resolve, 20));
+    assert.equal(JSON.parse(window.editorBridge.getSelectionState()).head, bookmarkTextFrom + 1,
+      'the caret moves through bookmark label characters instead of jumping across an HTML widget');
+    assert.equal(window.editorBridge.getMarkdown(), bookmarkSource,
+      'rendered HTML does not mutate source until the user edits text');
 
     window.editorBridge.setMarkdownSyntaxExposure('caret');
     await new Promise(resolve => setTimeout(resolve, 20));
-    window.document.querySelector('.cm-markdown-html-preview h3')
-      .closest('.cm-markdown-html-preview')
-      .dispatchEvent(new window.MouseEvent('pointerdown', { bubbles: true, cancelable: true }));
+    window.editorBridge.setSelectionState({
+      anchor: headingTextFrom + 2,
+      head: headingTextFrom + 2
+    });
     await waitForDomCondition(window,
       () => sourceText(window.document.querySelector('.cm-content')).includes('<H3 ADD_DATE='),
       'caret exposure reveals the bookmark heading source under the caret');
     assert.equal(window.editorBridge.getEditorMode(), 'rendered', 'syntax exposure does not create a second user-facing mode');
     assert.equal(window.editorBridge.getSyntaxExposureScope(), 'caret');
-    assert.equal(window.document.querySelectorAll('.cm-markdown-html-preview').length, wysiwygPreviews.length - 1,
-      'caret exposure reveals only the selected bookmark element');
     assert.equal(sourceText(window.document.querySelector('.cm-content')).includes('<A HREF='), false,
       'the sibling bookmark link remains rendered');
-    assert.ok([...window.document.querySelectorAll('.cm-markdown-html-preview')]
-      .some(preview => preview.querySelector('a[href="https://example.test/"]')),
-    'the bookmark link remains an independent rendered element');
-
-    window.document.querySelector('.cm-markdown-html-preview a[href="https://example.test/"]')
-      .dispatchEvent(new window.MouseEvent('pointerdown', { bubbles: true, cancelable: true }));
+    window.editorBridge.setSelectionState({
+      anchor: bookmarkLinkTextFrom + 2,
+      head: bookmarkLinkTextFrom + 2
+    });
     await waitForDomCondition(window,
       () => sourceText(window.document.querySelector('.cm-content')).includes('<A HREF='),
-      'tapping a bookmark link with exposure enabled edits its own HTML source');
+      'caret exposure reveals only the selected bookmark link source');
     assert.equal(sourceText(window.document.querySelector('.cm-content')).includes('<H3 ADD_DATE='), false,
       'moving from the heading to the link hides the previous element source again');
 
-    const safeTextPosition = source.indexOf('Safe text after the HTML.');
-    window.editorBridge.setSelectionState({ anchor: safeTextPosition, head: safeTextPosition });
-    await waitForDomCondition(window,
-      () => window.document.querySelectorAll('.cm-markdown-html-preview').length === wysiwygPreviews.length,
-      'the HTML previews render again after the caret leaves their source');
-    const exposedSettingPreviews = [...window.document.querySelectorAll('.cm-markdown-html-preview')];
-    assert.ok(exposedSettingPreviews.some(preview => preview.querySelector('.raw-html-block')),
-      'HTML block rendering remains available with caret syntax exposure enabled');
-    const blockPreview = exposedSettingPreviews.find(preview => preview.querySelector('.raw-html-block'));
+    const quotedSource = [
+      '> <DL><p><DT><H3>Quoted folder</H3>',
+      '> <DL><DT><A HREF="https://quoted.example.test/">Quoted bookmark</A></DL></DL>'
+    ].join('\n');
+    window.editorBridge.setMarkdownSyntaxExposure('hidden');
+    window.editorBridge.setMarkdown(quotedSource);
+    await new Promise(resolve => setTimeout(resolve, 20));
+    content = window.document.querySelector('.cm-content');
+    assert.ok([...content.querySelectorAll('.cm-raw-html-text')]
+      .some(span => span.textContent.trim() === 'Quoted bookmark' &&
+        span.classList.contains('cm-raw-html-a')),
+    'HTML text remains editable when nested in a Markdown blockquote');
+    assert.equal(sourceText(content).includes('> <DL>'), false,
+      'the blockquote marker stays hidden while its HTML content renders');
+
+    const inlineSource = 'Inline HTML <kbd>Ctrl</kbd> and <mark>highlight</mark>.';
+    window.editorBridge.setMarkdown(inlineSource);
+    await new Promise(resolve => setTimeout(resolve, 20));
+    content = window.document.querySelector('.cm-content');
+    assert.ok([...content.querySelectorAll('.cm-raw-html-text')]
+      .some(span => span.textContent === 'Ctrl' && span.classList.contains('cm-raw-html-kbd')),
+    'inline HTML remains character-editable with its styling');
+    assert.ok([...content.querySelectorAll('.cm-raw-html-text')]
+      .some(span => span.textContent === 'highlight' && span.classList.contains('cm-raw-html-mark')),
+    'adjacent inline HTML retains independent styling');
+
+    const complexSource = [
+      '<div class="raw-html-block"><p>Block HTML <strong>renders</strong>.</p></div>',
+      '<script>window.__wmdxRawHtmlExecuted = true;</script>'
+    ].join('\n');
+    window.editorBridge.setMarkdown(complexSource);
+    await new Promise(resolve => setTimeout(resolve, 20));
+    content = window.document.querySelector('.cm-content');
+    assert.equal(content.querySelectorAll('.cm-markdown-html-preview script').length, 0,
+      'WYSIWYG never inserts active script elements');
+    assert.equal(window.__wmdxRawHtmlExecuted, undefined, 'WYSIWYG does not execute raw HTML scripts');
+    window.editorBridge.setMarkdownSyntaxExposure('caret');
+    await new Promise(resolve => setTimeout(resolve, 20));
+    const blockPreview = window.document.querySelector('.cm-content .cm-markdown-html-preview .raw-html-block')
+      ?.closest('.cm-markdown-html-preview');
+    assert.ok(blockPreview, 'complex HTML blocks still use a sanitized rendered preview');
     blockPreview.dispatchEvent(new window.MouseEvent('pointerdown', { bubbles: true, cancelable: true }));
     await waitForDomCondition(window,
       () => sourceText(window.document.querySelector('.cm-content')).includes('<p>Block HTML'),
       'moving the caret into the tapped child exposes only that element source');
-    assert.equal(window.document.querySelectorAll('.cm-markdown-html-preview').length, wysiwygPreviews.length - 1,
-      'other HTML regions remain rendered while the selected region exposes syntax');
-    assert.equal(window.editorBridge.getMarkdown(), source, 'syntax exposure never mutates Markdown');
-
-    window.editorBridge.setSelectionState({ anchor: safeTextPosition, head: safeTextPosition });
-    await waitForDomCondition(window,
-      () => window.document.querySelectorAll('.cm-markdown-html-preview').length === wysiwygPreviews.length,
-      'the HTML previews render again before testing inline source');
-    window.document.querySelector('.cm-markdown-html-preview kbd')
-      .closest('.cm-markdown-html-preview')
-      .dispatchEvent(new window.MouseEvent('pointerdown', { bubbles: true, cancelable: true }));
+    assert.equal(window.editorBridge.getMarkdown(), complexSource, 'syntax exposure never mutates Markdown');
+    const inlineTextPosition = inlineSource.indexOf('Ctrl') + 1;
+    window.editorBridge.setMarkdown(inlineSource);
+    window.editorBridge.setSelectionState({
+      anchor: inlineTextPosition,
+      head: inlineTextPosition
+    });
     await waitForDomCondition(window,
       () => sourceText(window.document.querySelector('.cm-content')).includes('<kbd>Ctrl</kbd>'),
       'caret exposure reveals only the selected inline HTML element');
     assert.equal(sourceText(window.document.querySelector('.cm-content')).includes('<mark>highlight</mark>'), false,
       'the neighboring inline HTML element remains rendered');
-    assert.ok([...window.document.querySelectorAll('.cm-markdown-html-preview')]
-      .some(preview => preview.querySelector('mark')),
-    'the neighboring inline element remains independently available');
+    assert.ok([...window.document.querySelectorAll('.cm-raw-html-text')]
+      .some(span => span.textContent.trim() === 'highlight' &&
+        span.classList.contains('cm-raw-html-mark')),
+    'the neighboring inline element remains styled and editable');
 
     await window.editorBridge.setEditorMode('source');
-    const content = window.document.querySelector('.cm-content');
-    assert.equal(sourceText(content), source, 'Source displays the complete raw HTML Markdown');
-    assert.equal(content.querySelectorAll('.cm-markdown-html-preview').length, 0,
+    const sourceContent = window.document.querySelector('.cm-content');
+    assert.equal(sourceText(sourceContent), inlineSource, 'Source displays the complete raw HTML Markdown');
+    assert.equal(sourceContent.querySelectorAll('.cm-markdown-html-preview').length, 0,
       'Source mode does not render HTML previews');
     assert.deepEqual(errors, []);
   } finally {

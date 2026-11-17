@@ -5820,6 +5820,14 @@ function selectionTouchesMarkdownHtmlRegion(selection, region) {
     : selection.from < region.to && selection.to > region.from;
 }
 
+function markdownHtmlTextClasses(tagStack) {
+  const tagClasses = (Array.isArray(tagStack) ? tagStack : [])
+    .map(tag => String(tag).toLowerCase().replace(/[^a-z0-9_-]/g, '-'))
+    .filter(Boolean)
+    .map(tag => `cm-raw-html-${tag}`);
+  return ['cm-raw-html-text', ...tagClasses].join(' ');
+}
+
 function renderMarkdownHtmlRegion(source, profile) {
   const key = profile + '\u0000' + source;
   if (markdownHtmlPreviewOutputCache.has(key)) {
@@ -5975,6 +5983,33 @@ function buildMarkdownHtmlRenderValue(state) {
     const source = state.doc.sliceString(region.from, region.to);
     const html = renderMarkdownHtmlRegion(region.renderSource ?? source, profile);
     if (!html || !markdownHtmlHasVisibleContent(html)) continue;
+    if (
+      htmlElement &&
+      region.editableTextRanges?.length &&
+      region.syntaxRanges?.length
+    ) {
+      const classes = markdownHtmlTextClasses(region.tagStack);
+      for (const textRange of region.editableTextRanges) {
+        if (textRange.to <= textRange.from) continue;
+        decorations.push(
+          Decoration.mark({
+            tagName: 'span',
+            class: classes,
+            attributes: { 'data-raw-html-text': 'true' }
+          }).range(textRange.from, textRange.to)
+        );
+      }
+      for (const syntaxRange of region.syntaxRanges) {
+        if (syntaxRange.to <= syntaxRange.from) continue;
+        decorations.push(
+          Decoration.replace({
+            widget: new MarkdownHtmlHiddenSyntaxWidget()
+          }).range(syntaxRange.from, syntaxRange.to)
+        );
+      }
+      renderedRegions.push(region);
+      continue;
+    }
     decorations.push(
       Decoration.replace({
         widget: new MarkdownHtmlPreviewWidget(
