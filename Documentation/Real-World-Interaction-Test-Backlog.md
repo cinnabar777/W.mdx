@@ -2,11 +2,15 @@
 
 This is the running index of user-action test suites, what each one actually exercises, and what remains uncovered. The detailed syntax, conversion, nesting, and expected-loss rules remain in [Markdown-Element-Compatibility-Test-Plan.md](Markdown-Element-Compatibility-Test-Plan.md).
 
+## Latest observed CI checkpoint
+
+On commit `c57e6b54f431dfefc3309f317d8f3aaa16d27305`, GitHub run [44078210535](https://github.com/cinnabar777/W.mdx/actions/runs/44078210535) passed the focused Markdown conversion/paste tests, Chromium list-caret and exposed-table-scroll regressions, source-table/quote/list/callout interactions, the backup-default preference test, Debug APK build, and artifact upload. The `Wmdx-Debug-APK` artifact is 6,832,890 bytes (artifact ID `14326037695`). Android WebView instrumentation did not run; the run's Chromium results do not close device-specific caret, keyboard, or touch issues. See [the full branch handoff](Replit/Branch-Audit-Handoff-2026-11-17.md) for the fixes and remaining work.
+
 ## Test policy
 
 - Keep interaction tests under `web/browser-tests/` or Android instrumentation tests. They are development/test code, not app features or APK content.
 - Run a focused suite when its feature changes or a field report points to it. Run the broader suites at planned integration points, not on every build.
-- Keep fast unit tests and the Debug build in the normal build workflow. Run browser interaction and emulator suites through the manually selected **Focused Interaction Tests** workflow.
+- The current **Build Debug APK** workflow runs the selected focused Chromium interaction regressions in addition to conversion, preference, and build steps. Android instrumentation remains a separate, explicitly selected workflow. Confirm the actual run's step list before describing what was exercised; workflow contents can change.
 - Browser suites load the generated WebView assets from `app/src/main/assets/www`; build the web bundle before running them. A test against stale assets is not valid evidence about the source change.
 - Use visible taps/clicks, keyboard input, settings controls, and menu buttons for the action under test. Seed data programmatically, but do not use internal action APIs to stand in for user behavior.
 - A pass requires the test body to run and to assert the changed Markdown, rendered result, focus/caret where relevant, and saved/reopened state where applicable. A build or a cursor-only pass is not a behavior pass.
@@ -53,7 +57,7 @@ npm --prefix web run test:browser:layout
 npm --prefix web run test:browser:interactions
 ```
 
-`npm --prefix web run test:browser` runs the existing default browser suites; the longer list matrix is intentionally opt-in. Android WebView instrumentation is selected separately in the **Focused Interaction Tests** GitHub Actions workflow; it compiles/installs the test APKs and starts an emulator, so reserve it for Android-specific changes or device verification.
+`npm --prefix web run test:browser` runs the existing default browser suites; the longer list matrix is intentionally opt-in. Android WebView instrumentation is selected separately in the **Focused Interaction Tests** GitHub Actions workflow; it compiles/installs the test APKs and starts an emulator, so reserve it for Android-specific changes or device verification. A successful normal Debug workflow does not mean the Android interaction suite ran.
 
 Select **android-lists** in the same workflow to run only the native Settings-to-editor list preference test; select **android-webview** to run the full Android WebView interaction class.
 

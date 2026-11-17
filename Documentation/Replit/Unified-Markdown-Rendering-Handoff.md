@@ -1,5 +1,7 @@
 # New-session handoff: unified Markdown rendering
 
+> **Current state:** Read [Branch Audit Handoff — 2026-11-17](Branch-Audit-Handoff-2026-11-17.md) first for the latest branch commit, the confirmed caret/whitespace fixes, CI and APK status, unresolved Android checks, and the next audit priorities. This file describes the longer-term editor contract and architecture.
+
 ## Goal
 
 Use one semantic document model and shared rendered-layout pipeline for Live
