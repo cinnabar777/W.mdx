@@ -44,7 +44,8 @@ jobs:
             test/html-export.test.cjs \
             test/markdown-compatibility-matrix.test.cjs \
             test/gfm-spec-extensions.test.cjs \
-            test/markdown-paste.test.cjs
+            test/markdown-paste.test.cjs \
+            test/markdown-html-rendering.test.cjs
 
       - name: Install Playwright Chromium
         working-directory: web

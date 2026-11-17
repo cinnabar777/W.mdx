@@ -565,47 +565,6 @@ test('CommonMark inline syntax, hard breaks, and list indentation render without
       'Source does not apply rendered ordered-list layout');
     assert.equal(window.editorBridge.getMarkdown(), orderedStyleSource);
 
-    const rawHtmlSource = [
-      '<div class="raw-html-block"><p>Block HTML <strong>renders</strong>.</p></div>',
-      '',
-      'Inline HTML <kbd>Ctrl</kbd> and <mark>highlight</mark>.',
-      '',
-      '<script>window.__wmdxRawHtmlExecuted = true;</script>',
-      '',
-      'Safe text after the HTML.'
-    ].join('\n');
-    for (const mode of ['wysiwyg', 'live_preview']) {
-      window.editorBridge.setMarkdown(rawHtmlSource);
-      await new Promise(resolve => setTimeout(resolve, 20));
-      await window.editorBridge.setEditorMode(mode);
-      await new Promise(resolve => setTimeout(resolve, 20));
-      const previews = [...window.document.querySelectorAll('.cm-markdown-html-preview')];
-      assert.equal(previews.length, 2, mode + ' renders the safe block and inline HTML');
-      assert.ok(previews[0].querySelector('.raw-html-block'), mode + ' renders HTML block elements');
-      assert.ok(previews[1].querySelector('kbd'), mode + ' renders inline HTML elements');
-      assert.equal(previews.some(preview => preview.querySelector('script')), false,
-        mode + ' never inserts active script elements');
-      assert.equal(window.__wmdxRawHtmlExecuted, undefined,
-        mode + ' does not execute raw HTML scripts');
-      assert.equal(window.editorBridge.getMarkdown(), rawHtmlSource,
-        mode + ' keeps the original Markdown unchanged');
-
-      previews[0].dispatchEvent(new window.MouseEvent('pointerdown', {
-        bubbles: true,
-        cancelable: true
-      }));
-      await new Promise(resolve => setTimeout(resolve, 20));
-      assert.equal(window.document.querySelectorAll('.cm-markdown-html-preview').length, 1,
-        mode + ' reveals the tapped HTML source for editing');
-      assert.equal(window.editorBridge.getMarkdown(), rawHtmlSource,
-        mode + ' source reveal does not mutate the document');
-    }
-    await window.editorBridge.setEditorMode('source');
-    const rawHtmlSourceContent = window.document.querySelector('.cm-content');
-    assert.equal(sourceText(rawHtmlSourceContent), rawHtmlSource,
-      'Source shows the complete raw HTML Markdown literally');
-    assert.equal(rawHtmlSourceContent.querySelectorAll('.cm-markdown-html-preview').length, 0,
-      'Source does not render Markdown HTML previews');
     assert.deepEqual(errors, []);
   } finally {
     dom.window.close();
