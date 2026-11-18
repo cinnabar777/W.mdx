@@ -1,4 +1,5 @@
 import { marked } from 'marked';
+import { Parser as CommonMarkParser, HtmlRenderer as CommonMarkHtmlRenderer } from 'commonmark';
 import createDOMPurify from 'dompurify';
 import { convertFromMarkdown, exportMarkdown } from './markdownConversion.mjs';
 import { parseFootnotes } from './footnotes.js';
@@ -60,6 +61,11 @@ function createGfmRenderer() {
 }
 
 function renderMarkdownForDialect(markdown, targetDialect) {
+  if (targetDialect === 'commonmark') {
+    const parser = new CommonMarkParser();
+    const renderer = new CommonMarkHtmlRenderer();
+    return renderer.render(parser.parse(markdown));
+  }
   return marked.parse(markdown, {
     gfm: targetDialect !== 'commonmark',
     ...(targetDialect === 'gfm' ? { renderer: createGfmRenderer() } : {}),
@@ -157,6 +163,33 @@ function enhanceImportedMediaLinks(document) {
   }
 }
 
+function ensureMediaLabels(document) {
+  for (const media of document.querySelectorAll('audio, video')) {
+    if (media.getAttribute('aria-label')?.trim()) continue;
+    const sourceNode = media.querySelector('source[src]');
+    const source = media.getAttribute('data-wmdx-original-src') ||
+      media.getAttribute('src') ||
+      sourceNode?.getAttribute('data-wmdx-original-src') ||
+      sourceNode?.getAttribute('src') ||
+      '';
+    const fallback = media.tagName.toLowerCase() === 'audio'
+      ? 'Audio attachment'
+      : 'Video attachment';
+    if (!source || /^data:/i.test(source)) {
+      media.setAttribute('aria-label', fallback);
+      continue;
+    }
+    let filename = '';
+    try {
+      const pathname = new URL(source, 'https://wmdx.invalid/').pathname;
+      filename = decodeURIComponent(pathname.split('/').filter(Boolean).at(-1) ?? '');
+    } catch {
+      filename = '';
+    }
+    media.setAttribute('aria-label', filename || fallback);
+  }
+}
+
 function protectedMarkdownRanges(source) {
   const fenced = [];
   const lines = [];
@@ -245,6 +278,59 @@ function protectedMarkdownRanges(source) {
     isFenced: position => fenced.some(range => position >= range.from && position < range.to),
     isTable: position => tables.some(range => position >= range.from && position < range.to)
   };
+}
+
+function protectObsidianMathForRendering(source) {
+  const text = String(source ?? '');
+  const patterns = [
+    /(?<!\\)\$\$[\s\S]*?(?<!\\)\$\$/g,
+    /\\\([\s\S]*?\\\)/g,
+    /\\\[[\s\S]*?\\\]/g,
+    /(?<!\\)\$(?!\$)([^$\n]*[\\^_{}=+*/-][^$\n]*)(?<!\\)\$(?!\$)/g
+  ];
+  const matches = [];
+  for (const pattern of patterns) {
+    for (const match of text.matchAll(pattern)) {
+      const from = match.index;
+      const to = from + match[0].length;
+      if (matches.some(existing => from < existing.to && to > existing.from)) continue;
+      matches.push({ from, to, value: match[0] });
+    }
+  }
+  matches.sort((left, right) => left.from - right.from);
+
+  let markdown = text;
+  const values = matches.map(({ value }, index) => ({
+    marker: `\uE000OBSMATH${index}\uE001`,
+    value
+  }));
+  for (let index = matches.length - 1; index >= 0; index -= 1) {
+    const { from, to } = matches[index];
+    markdown = markdown.slice(0, from) +
+      values[index].marker +
+      markdown.slice(to);
+  }
+  return { markdown, values };
+}
+
+function restoreObsidianMathInDocument(document, values) {
+  if (!values.length) return;
+  const restore = text => values.reduce(
+    (result, { marker, value }) => result.replaceAll(marker, value),
+    text
+  );
+  const showText = document.defaultView?.NodeFilter?.SHOW_TEXT ?? 4;
+  const walker = document.createTreeWalker(document.body, showText);
+  while (walker.nextNode()) {
+    walker.currentNode.nodeValue = restore(walker.currentNode.nodeValue ?? '');
+  }
+  for (const element of document.body.querySelectorAll('*')) {
+    for (const attribute of Array.from(element.attributes)) {
+      if (attribute.value.includes('\uE000OBSMATH')) {
+        element.setAttribute(attribute.name, restore(attribute.value));
+      }
+    }
+  }
 }
 
 function extractFootnotes(source, syntaxSettings) {
@@ -384,6 +470,15 @@ function isSafeAttachmentDataUri(value) {
     .test(String(value ?? ''));
 }
 
+function isSafeImageDataUri(value) {
+  return /^data:image\/(?:avif|gif|jpeg|png|webp);base64,/i
+    .test(String(value ?? ''));
+}
+
+function isSafeObsidianOpenUri(value) {
+  return /^obsidian:\/\/open(?:[/?#]|$)/i.test(String(value ?? ''));
+}
+
 function normalizeProfileSource(source, profile) {
   if (profile === 'wmdx') return { markdown: String(source ?? ''), warnings: [] };
   return convertFromMarkdown(source, profile, { DOMParser: null });
@@ -422,12 +517,13 @@ function annotateObsidianWikiLinks(document, markdown) {
         continue;
       }
       if (!codeTicks) {
-        const start = line[index] === '!' && line[index + 1] === '[' ? index : index;
+        const isEmbed = line[index] === '!' && line[index + 1] === '[';
+        const start = isEmbed ? index + 1 : index;
         if (line[start] === '[') {
           const end = line.indexOf(']', start + 1);
           if (end >= 0) {
             const resource = parseWmdxResourceSyntax(line.slice(start, end + 1));
-            if (resource && !resource.embed) {
+            if (!isEmbed && resource && !resource.embed) {
               resources.push({
                 source: resource.source,
                 title: resource.displayTitle
@@ -442,7 +538,11 @@ function annotateObsidianWikiLinks(document, markdown) {
     }
   }
 
-  const anchors = Array.from(document.querySelectorAll('a[href]'));
+  const anchors = Array.from(document.querySelectorAll('a[href]'))
+    .filter(anchor =>
+      anchor.getAttribute('title') !== 'wmdx-attachment' &&
+      anchor.getAttribute('data-wmdx-kind') !== 'attachment'
+    );
   const hrefKey = value => {
     try {
       return new URL(String(value ?? ''), 'https://wmdx.invalid/').href;
@@ -470,6 +570,7 @@ function annotateObsidianWikiLinks(document, markdown) {
  */
 export function renderMarkdownHtml(source, {
   profile = 'wmdx',
+  sourceDialect = profile,
   window = globalThis.window,
   resolveAssetDataUri = null,
   footnoteSyntaxSettings = {}
@@ -480,8 +581,17 @@ export function renderMarkdownHtml(source, {
   const normalizedProfile = ['wmdx', 'commonmark', 'gfm', 'obsidian'].includes(profile)
     ? profile
     : 'wmdx';
-  const footnotes = extractFootnotes(String(source ?? ''), footnoteSyntaxSettings);
-  const normalized = normalizeProfileSource(footnotes.markdown, normalizedProfile);
+  const normalizedSourceDialect = ['wmdx', 'commonmark', 'gfm', 'obsidian'].includes(sourceDialect)
+    ? sourceDialect
+    : 'wmdx';
+  const sameCommonMarkDialect = normalizedSourceDialect === 'commonmark' &&
+    normalizedProfile === 'commonmark';
+  const footnotes = normalizedSourceDialect === 'commonmark'
+    ? { markdown: String(source ?? ''), references: [], rows: [] }
+    : extractFootnotes(String(source ?? ''), footnoteSyntaxSettings);
+  const normalized = sameCommonMarkDialect
+    ? { markdown: footnotes.markdown, warnings: [] }
+    : normalizeProfileSource(footnotes.markdown, normalizedSourceDialect);
   const footnoteBodyWarnings = [];
   const normalizedFootnoteRows = footnotes.rows.map(row => {
     if (normalizedProfile === 'wmdx') return row;
@@ -490,12 +600,20 @@ export function renderMarkdownHtml(source, {
     return { ...row, body: convertedBody.markdown };
   });
   const targetDialect = normalizedProfile === 'commonmark' ? 'commonmark' : 'gfm';
-  const exported = exportMarkdown(normalized.markdown, targetDialect);
+  const exported = sameCommonMarkDialect
+    ? { markdown: normalized.markdown, warnings: [] }
+    : exportMarkdown(normalized.markdown, targetDialect);
   const markdownWarnings = [...normalized.warnings, ...exported.warnings]
     .filter((warning, index, all) => all.indexOf(warning) === index)
     .filter(warning => !warning.includes('GFM alerts do not preserve the Wmdx expanded or collapsed state.'));
-  const markdownHtml = renderMarkdownForDialect(exported.markdown, targetDialect);
+  const protectedMath = normalizedProfile === 'obsidian'
+    ? protectObsidianMathForRendering(exported.markdown)
+    : { markdown: exported.markdown, values: [] };
+  const markdownHtml = renderMarkdownForDialect(protectedMath.markdown, targetDialect);
   const parsed = new window.DOMParser().parseFromString(markdownHtml, 'text/html');
+  if (normalizedProfile === 'obsidian') {
+    restoreObsidianMathInDocument(parsed, protectedMath.values);
+  }
   if (normalizedProfile === 'obsidian') {
     annotateObsidianWikiLinks(parsed, normalized.markdown);
   }
@@ -526,6 +644,10 @@ export function renderMarkdownHtml(source, {
         }
         const dataUri = resolvedAssets.get(reference);
         if (typeof dataUri === 'string' && /^data:[^,]+;base64,/i.test(dataUri)) {
+          const originalAttribute = `data-wmdx-original-${attribute}`;
+          if (!element.hasAttribute(originalAttribute)) {
+            element.setAttribute(originalAttribute, reference);
+          }
           element.setAttribute(attribute, dataUri);
         } else {
           assetWarnings.push(
@@ -535,24 +657,63 @@ export function renderMarkdownHtml(source, {
       }
     }
   }
+  ensureMediaLabels(parsed);
 
+  const preservedTitles = new Map();
+  let titleIndex = 0;
+  for (const anchor of parsed.querySelectorAll('a[title]')) {
+    let marker = `WMDX_PRESERVED_TITLE_${titleIndex++}_TOKEN`;
+    while (parsed.body.innerHTML.includes(marker)) marker += '_';
+    preservedTitles.set(marker, anchor.getAttribute('title') ?? '');
+    anchor.setAttribute('title', marker);
+  }
   const purifier = createDOMPurify(window);
   purifier.addHook('uponSanitizeAttribute', (node, data) => {
+    if (node.nodeName === 'A' && data.attrName === 'href' && /^(?:javascript|vbscript):/i.test(data.attrValue)) {
+      data.keepAttr = false;
+    }
+    if (node.nodeName === 'A' && data.attrName === 'href' && /^obsidian:/i.test(data.attrValue)) {
+      data.keepAttr = isSafeObsidianOpenUri(data.attrValue);
+    }
+    if (node.nodeName === 'A' && data.attrName === 'href') {
+      const href = data.attrValue;
+      const knownSafeScheme = /^(?:https?|ftp|mailto|tel|callto|sms|cid|xmpp|matrix):/i.test(href);
+      const specialSanitizedScheme = /^(?:obsidian|data):/i.test(href);
+      const hasScheme = /^[a-z][a-z0-9+.-]*:/i.test(href);
+      if (hasScheme && !knownSafeScheme && !specialSanitizedScheme && node.textContent !== href) {
+        // Keep a nonstandard CommonMark autolink only when its destination is visibly shown.
+        data.keepAttr = false;
+      }
+    }
     if (node.nodeName === 'A' && data.attrName === 'href' && /^data:/i.test(data.attrValue)) {
       data.keepAttr = isSafeAttachmentDataUri(data.attrValue);
     }
+    if (node.nodeName === 'IMG' && data.attrName === 'src' && /^data:/i.test(data.attrValue)) {
+      data.keepAttr = isSafeImageDataUri(data.attrValue);
+    }
   });
-  const html = purifier.sanitize(parsed.body.innerHTML, {
+  let html = purifier.sanitize(parsed.body.innerHTML, {
     USE_PROFILES: { html: true },
+    ALLOWED_URI_REGEXP: /^(?:(?:(?:f|ht)tps?|mailto|tel|callto|sms|cid|xmpp|matrix):|obsidian:\/\/open(?:[/?#]|$)|[a-z][a-z0-9+.-]*:|[^a-z]|[a-z+.-]+(?:[^a-z+.:\\-]|$))/i,
     ADD_TAGS: ['audio', 'video', 'source', 'track', 'figure', 'figcaption', 'mark', 'details', 'summary'],
     ADD_ATTR: [
       'controls', 'preload', 'poster', 'width', 'height', 'download',
       'start', 'checked', 'disabled', 'colspan', 'rowspan',
-      'data-wmdx-kind', 'data-wmdx-target'
+      'data-wmdx-kind', 'data-wmdx-target',
+      'data-wmdx-original-src', 'data-wmdx-original-href',
+      'data-wmdx-original-poster'
     ],
-    ADD_DATA_URI_TAGS: ['audio', 'video', 'source', 'a'],
+    ADD_DATA_URI_TAGS: ['audio', 'video', 'source', 'a', 'img'],
     FORBID_TAGS: ['style', 'link', 'iframe', 'object', 'embed', 'form']
   });
+  if (preservedTitles.size) {
+    const sanitizedDocument = new window.DOMParser().parseFromString(html, 'text/html');
+    for (const anchor of sanitizedDocument.querySelectorAll('a[title]')) {
+      const marker = anchor.getAttribute('title');
+      if (preservedTitles.has(marker)) anchor.setAttribute('title', preservedTitles.get(marker));
+    }
+    html = sanitizedDocument.body.innerHTML;
+  }
   return {
     html,
     warnings: [...markdownWarnings, ...footnoteWarnings, ...assetWarnings]

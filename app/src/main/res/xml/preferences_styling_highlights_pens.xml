@@ -2,6 +2,12 @@
 <androidx.preference.PreferenceScreen xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto">
 
+    <com.wmdx.markdownapp.ResetSwitchPreference
+        app:key="pref_wmdx_color_syntax_enabled"
+        app:title="Enable Wmdx Markers and Pens"
+        app:summary="Recognize Wmdx color-slot highlights and pen marks"
+        app:defaultValue="false" />
+
     <androidx.preference.PreferenceCategory app:title="Markers">
         <com.wmdx.markdownapp.ExpandablePreference
             app:key="pref_highlight_yellow_section"

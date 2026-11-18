@@ -20,6 +20,7 @@ class SettingsActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        AppPreferenceDefaults.initialize(this)
         setContentView(R.layout.activity_settings)
         applySystemBarDimming()
         supportActionBar?.setDisplayHomeAsUpEnabled(true)
@@ -116,9 +117,9 @@ open class BaseSettingsFragment : PreferenceFragmentCompat(), SharedPreferences.
 
     private fun applyMarkdownProfileDefaults(group: androidx.preference.PreferenceGroup) {
         val storedPreferences = PreferenceManager.getDefaultSharedPreferences(requireContext())
-        val profile = storedPreferences.getString("pref_markdown_profile", "wmdx")
+        val profile = storedPreferences.getString("pref_markdown_profile", "commonmark")
             ?.takeIf { it in setOf("wmdx", "commonmark", "gfm", "obsidian") }
-            ?: "wmdx"
+            ?: "commonmark"
         val defaults = when (profile) {
             "commonmark" -> mapOf(
                 "pref_gfm_extensions_enabled" to false,
@@ -133,6 +134,8 @@ open class BaseSettingsFragment : PreferenceFragmentCompat(), SharedPreferences.
                 "pref_callout_syntax_enabled" to false,
                 "pref_callout_syntax_wmdx_enabled" to false,
                 "pref_callout_syntax_obsidian_enabled" to false,
+                "pref_footnote_syntax_enabled" to false,
+                "pref_footnote_syntax_markdown_enabled" to false,
                 "pref_footnote_syntax_wmdx_enabled" to false,
                 "pref_footnote_syntax_obsidian_inline_enabled" to false,
                 "pref_footnote_authoring_syntax" to "markdown",
@@ -155,6 +158,8 @@ open class BaseSettingsFragment : PreferenceFragmentCompat(), SharedPreferences.
                 "pref_callout_syntax_wmdx_enabled" to false,
                 "pref_callout_syntax_obsidian_enabled" to true,
                 "pref_callout_authoring_syntax" to "obsidian",
+                "pref_footnote_syntax_enabled" to true,
+                "pref_footnote_syntax_markdown_enabled" to true,
                 "pref_footnote_syntax_wmdx_enabled" to false,
                 "pref_footnote_syntax_obsidian_inline_enabled" to false,
                 "pref_footnote_authoring_syntax" to "markdown",
@@ -177,6 +182,8 @@ open class BaseSettingsFragment : PreferenceFragmentCompat(), SharedPreferences.
                 "pref_callout_syntax_wmdx_enabled" to false,
                 "pref_callout_syntax_obsidian_enabled" to true,
                 "pref_callout_authoring_syntax" to "obsidian",
+                "pref_footnote_syntax_enabled" to true,
+                "pref_footnote_syntax_markdown_enabled" to true,
                 "pref_footnote_syntax_wmdx_enabled" to false,
                 "pref_footnote_syntax_obsidian_inline_enabled" to true,
                 "pref_footnote_authoring_syntax" to "markdown",
@@ -200,6 +207,8 @@ open class BaseSettingsFragment : PreferenceFragmentCompat(), SharedPreferences.
                 "pref_callout_syntax_wmdx_enabled" to true,
                 "pref_callout_syntax_obsidian_enabled" to true,
                 "pref_callout_authoring_syntax" to "wmdx",
+                "pref_footnote_syntax_enabled" to true,
+                "pref_footnote_syntax_markdown_enabled" to true,
                 "pref_footnote_syntax_wmdx_enabled" to true,
                 "pref_footnote_syntax_obsidian_inline_enabled" to true,
                 "pref_footnote_authoring_syntax" to "wmdx",
@@ -448,6 +457,7 @@ class SettingsFragment : BaseSettingsFragment() {
             .setPositiveButton("Reset All") { _, _ ->
                 val prefs = PreferenceManager.getDefaultSharedPreferences(context)
                 prefs.edit().clear().apply()
+                AppPreferenceDefaults.initialize(context)
 
                 val fontDir = File(context.filesDir, "fonts")
                 if (fontDir.exists()) {
@@ -1211,11 +1221,11 @@ class StylingHeadingsFragment : StylingSettingsFragment() {
             "hash" to "pref_heading_syntax_hash_enabled",
             "setext" to "pref_heading_syntax_setext_enabled"
         ).filter { (_, preferenceKey) ->
-            sharedPreferences.getBoolean(preferenceKey, true)
+            sharedPreferences.getBoolean(preferenceKey, preferenceKey != "pref_heading_syntax_wmdx_enabled")
         }.map { (flavor, _) -> flavor }
         if (enabledFlavors.isEmpty()) return
 
-        val current = sharedPreferences.getString("pref_heading_authoring_syntax", "wmdx")
+        val current = sharedPreferences.getString("pref_heading_authoring_syntax", "hash")
         val resolved = when {
             enabledFlavors.size == 1 -> enabledFlavors.single()
             current != null && enabledFlavors.contains(current) -> current
@@ -1367,18 +1377,18 @@ class StylingFootnotesFragment : StylingSettingsFragment() {
         ) {
             return
         }
-        if (!sharedPreferences.getBoolean("pref_footnote_syntax_enabled", true)) return
+        if (!sharedPreferences.getBoolean("pref_footnote_syntax_enabled", false)) return
 
         val enabledFlavors = listOf(
             "wmdx" to "pref_footnote_syntax_wmdx_enabled",
             "markdown" to "pref_footnote_syntax_markdown_enabled",
             "obsidian_inline" to "pref_footnote_syntax_obsidian_inline_enabled"
         ).filter { (_, preferenceKey) ->
-            sharedPreferences.getBoolean(preferenceKey, true)
+            sharedPreferences.getBoolean(preferenceKey, false)
         }.map { (flavor, _) -> flavor }
         if (enabledFlavors.isEmpty()) return
 
-        val current = sharedPreferences.getString("pref_footnote_authoring_syntax", "wmdx")
+        val current = sharedPreferences.getString("pref_footnote_authoring_syntax", "markdown")
         val resolved = when {
             enabledFlavors.size == 1 -> enabledFlavors.single()
             current != null && enabledFlavors.contains(current) -> current
@@ -1416,11 +1426,11 @@ class StylingListsFragment : StylingSettingsFragment() {
             "markdown" to "pref_list_syntax_markdown_enabled",
             "wmdx" to "pref_list_syntax_wmdx_enabled"
         ).filter { (_, preferenceKey) ->
-            sharedPreferences.getBoolean(preferenceKey, true)
+            sharedPreferences.getBoolean(preferenceKey, preferenceKey == "pref_list_syntax_markdown_enabled")
         }.map { (flavor, _) -> flavor }
         if (enabledFlavors.isEmpty()) return
 
-        val current = sharedPreferences.getString("pref_list_authoring_syntax", "wmdx")
+        val current = sharedPreferences.getString("pref_list_authoring_syntax", "markdown")
         val resolved = when {
             enabledFlavors.size == 1 -> enabledFlavors.single()
             current != null && enabledFlavors.contains(current) -> current
@@ -1488,17 +1498,17 @@ class StylingCalloutsFragment : StylingSettingsFragment() {
     }
 
     private fun updateCalloutAuthoringPreference(sharedPreferences: SharedPreferences) {
-        if (!sharedPreferences.getBoolean("pref_callout_syntax_enabled", true)) return
+        if (!sharedPreferences.getBoolean("pref_callout_syntax_enabled", false)) return
 
         val enabledFlavors = listOf(
             "wmdx" to "pref_callout_syntax_wmdx_enabled",
             "obsidian" to "pref_callout_syntax_obsidian_enabled"
         ).filter { (_, preferenceKey) ->
-            sharedPreferences.getBoolean(preferenceKey, true)
+            sharedPreferences.getBoolean(preferenceKey, false)
         }.map { (flavor, _) -> flavor }
         if (enabledFlavors.isEmpty()) return
 
-        val current = sharedPreferences.getString("pref_callout_authoring_syntax", "wmdx")
+        val current = sharedPreferences.getString("pref_callout_authoring_syntax", "obsidian")
         val resolved = when {
             enabledFlavors.size == 1 -> enabledFlavors.single()
             current != null && enabledFlavors.contains(current) -> current
@@ -1949,7 +1959,9 @@ class StylingControlbarFragment : StylingSettingsFragment() {
             "menu" to listOf(
                 "newTab", "newFile", "openFile", "saveFile", "saveAsFile", "saveTabs", "saveAsTextPack",
                 "saveAsMdzip", "convertFromMarkdown", "pasteFromDialect", "exportMarkdown", "lintMarkdown",
-                "formatJson", "exportHtml", "search", "switchView", "sourceLanguage", "newWindow", "settings"
+                "formatJson", "exportHtml", "search", "switchView", "sourceLanguage",
+                "syntaxExposureHidden", "syntaxExposureCaret", "syntaxExposureLine", "syntaxExposureBlock",
+                "newWindow", "settings"
             )
         )
         private val TOOLBAR_DELETABLE_KEY_IDS =
@@ -1972,7 +1984,9 @@ class StylingControlbarFragment : StylingSettingsFragment() {
             "newTab", "newFile", "openFile", "saveFile", "saveAsFile", "saveTabs", "saveAsTextPack",
             "saveAsMdzip", "convertFromMarkdown", "pasteFromDialect", "exportMarkdown", "lintMarkdown",
             "formatJson",
-            "exportHtml", "search", "switchView", "sourceLanguage", "newWindow", "settings",
+            "exportHtml", "search", "switchView", "sourceLanguage",
+            "syntaxExposureHidden", "syntaxExposureCaret", "syntaxExposureLine", "syntaxExposureBlock",
+            "newWindow", "settings",
             "cut", "copy", "paste", "selectAll", TOOLBAR_TOGGLE_STYLE_ID
         )
         private val TOOLBAR_GESTURE_IDS = listOf(
@@ -4295,7 +4309,7 @@ class MarkdownDialectSettingsFragment : BaseSettingsFragment() {
         key: String
     ) {
         if (key != "pref_markdown_profile") return
-        val profile = sharedPreferences.getString("pref_markdown_profile", "wmdx")
+        val profile = sharedPreferences.getString("pref_markdown_profile", "commonmark")
         for (preferenceKey in listOf(
             "pref_wmdx_color_syntax_enabled",
             "pref_obsidian_highlight_enabled",

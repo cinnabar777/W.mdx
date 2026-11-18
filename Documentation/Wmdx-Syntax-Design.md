@@ -1,23 +1,30 @@
 # W.mdx Native Syntax — Design Draft
 
-**Status:** Design draft; not all rules in this document are implemented.
+**Status:** Experimental design draft; not all rules in this document are implemented.
 
-This document records the agreed direction and decisions for W.mdx's native
-authoring syntax. It is separate from [Markdown.md](Markdown.md), which describes
-the syntax the current app supports.
+Wmdx-specific syntax is an experiment, not the compatibility baseline. The
+spellings and rules below are provisional and may change. Current compatibility
+work prioritizes CommonMark, GFM, and Obsidian, followed by HTML import/export.
+Final Wmdx syntax choices and conversion rules are deferred until those
+standards and their HTML behavior are covered.
+
+This document records candidate directions for W.mdx's native authoring syntax.
+It is separate from [Markdown.md](Markdown.md), which describes the syntax the
+current app supports.
 
 ## Design direction
 
-- W.mdx syntax is the primary authoring format. It should be readable as plain
-  text, concise, and suitable for a word processor. W.mdx documents should not
-  require or encourage authored HTML; add readable native syntax for word-
-  processor features Markdown does not cover.
+- If W.mdx develops a native syntax, it should be readable as plain text,
+  concise, and suitable for a word processor. It should not require or encourage
+  authored HTML; any native syntax for word-processor features is a later design
+  decision.
 - CommonMark, GitHub Flavored Markdown (GFM), and Obsidian are import/export
-  targets. Their limitations do not constrain W.mdx's native syntax; conversion
-  belongs in a shared pipeline with a selected source or destination format.
-  HTML export is allowed; HTML is not native Wmdx authoring syntax.
-- Do not introduce syntax piecemeal. Agree on a coherent grammar before
-  implementing parser, renderer, toolbar, or import/export changes.
+  compatibility targets. Their support must not depend on Wmdx-specific
+  syntax. Final Wmdx conversion rules come later, after their behavior and HTML
+  import/export are established.
+- Do not introduce Wmdx syntax piecemeal. Revisit the grammar as a coherent
+  design before implementing new Wmdx parser, renderer, toolbar, or conversion
+  behavior.
 - Prefer characters users can type on a phone keyboard. The existing Unicode
   subscript selectors for typography colors and styles are an intentional
   exception: they are unobtrusive in text and are rarely typed by hand.

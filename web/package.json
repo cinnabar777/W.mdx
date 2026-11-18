@@ -9,7 +9,12 @@
     "test:browser": "node browser-tests/unified-layout.cjs && node browser-tests/editor-interaction-regressions.cjs && node browser-tests/table-workflow-matrix.cjs",
     "test:browser:layout": "node browser-tests/unified-layout.cjs",
     "test:browser:interactions": "node browser-tests/editor-interaction-regressions.cjs",
-    "test:browser:tables": "node browser-tests/table-workflow-matrix.cjs"
+    "test:browser:tables": "node browser-tests/table-workflow-matrix.cjs",
+    "test:browser:table-syntax-scroll": "node browser-tests/table-syntax-scroll.cjs",
+    "test:browser:hardbreak-caret": "node browser-tests/hardbreak-caret-geometry.cjs",
+    "test:browser:html-caret": "node browser-tests/markdown-html-caret-geometry.cjs",
+    "test:browser:lists": "node browser-tests/list-workflow-matrix.cjs",
+    "test:browser:list-caret": "node browser-tests/list-caret-stability.cjs"
   },
   "dependencies": {
     "@codemirror/commands": "^6.8.0",
@@ -33,10 +38,11 @@
     "@lezer/highlight": "^1.2.1",
     "@lezer/markdown": "^1.3.2",
     "dompurify": "^3.4.17",
-    "marked": "^18.2.0"
+    "marked": "^18.2.0",
+    "commonmark": "0.31.2",
+    "turndown": "7.2.5"
   },
   "devDependencies": {
-    "commonmark": "0.31.2",
     "esbuild": "0.28.2",
     "jsdom": "^29.1.1",
     "playwright": "1.58.2"

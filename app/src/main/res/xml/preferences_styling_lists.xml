@@ -20,14 +20,14 @@
             app:key="pref_list_syntax_gfm_tasks_enabled"
             app:title="Markdown Task Lists"
             app:summary="Recognize GFM and Obsidian - [ ] task items"
-            android:defaultValue="true"
+            android:defaultValue="false"
             app:dependency="pref_list_syntax_markdown_enabled" />
 
         <com.wmdx.markdownapp.ResetSwitchPreference
             app:key="pref_list_syntax_wmdx_enabled"
             app:title="Wmdx List Features"
             app:summary="Use distinct bullets, letter and Roman numbering, and standalone tasks"
-            android:defaultValue="true"
+            android:defaultValue="false"
             app:dependency="pref_list_syntax_enabled" />
 
         <com.wmdx.markdownapp.ResetListPreference
@@ -36,7 +36,7 @@
             app:summary="Syntax inserted by the list toolbar and shortcuts"
             android:entries="@array/list_authoring_syntax_entries"
             android:entryValues="@array/list_authoring_syntax_values"
-            android:defaultValue="wmdx"
+            android:defaultValue="markdown"
             app:dependency="pref_list_syntax_enabled" />
 
         <com.wmdx.markdownapp.ResetListPreference
@@ -146,7 +146,7 @@
             app:summary="Left margin / padding for lists"
             app:min="0"
             android:max="80"
-            app:defaultValue="24"
+            app:defaultValue="12"
             app:showSeekBarValue="true" />
 
         <com.wmdx.markdownapp.ResetSeekBarPreference

@@ -106,6 +106,15 @@ const sharedElementCases = [
     }
   },
   {
+    id: 'BRK-02',
+    name: 'backslash hard break survives all flavor pairs',
+    sources: {
+      commonmark: 'First line\\\nNext line.',
+      gfm: 'First line\\\nNext line.',
+      obsidian: 'First line\\\nNext line.'
+    }
+  },
+  {
     id: 'LNK-01',
     name: 'external and relative links with titles',
     sources: {

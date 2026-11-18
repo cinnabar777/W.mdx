@@ -139,6 +139,64 @@ function showCellEditorKeyboard() {
   }
 }
 
+function markdownOffsetAtRenderedPosition(root, point) {
+  if (
+    !point ||
+    !Number.isFinite(point.x) ||
+    !Number.isFinite(point.y)
+  ) return 0;
+  const doc = root.ownerDocument;
+  const caret = doc.caretPositionFromPoint?.(point.x, point.y) ||
+    doc.caretRangeFromPoint?.(point.x, point.y);
+  const target = caret?.offsetNode || caret?.startContainer;
+  const targetOffset = caret?.offset ?? caret?.startOffset;
+  if (!target || !root.contains(target) || !Number.isInteger(targetOffset)) return 0;
+
+  let markdownOffset = 0;
+  let result = null;
+  const visit = node => {
+    if (node === target) {
+      if (node.nodeType === 3) {
+        result = markdownOffset + Math.max(
+          0,
+          Math.min(targetOffset, node.nodeValue?.length || 0)
+        );
+      } else {
+        for (let index = 0; index < targetOffset; index += 1) {
+          visit(node.childNodes[index]);
+          if (result !== null) break;
+        }
+        if (result === null) result = markdownOffset;
+      }
+      return true;
+    }
+    if (node.nodeType === 3) {
+      markdownOffset += node.nodeValue?.length || 0;
+      return false;
+    }
+    if (node.nodeType !== 1) return false;
+    if (node.tagName === 'BR') {
+      markdownOffset += 4;
+      return false;
+    }
+    const marker = ['STRONG', 'B'].includes(node.tagName)
+      ? '**'
+      : ['EM', 'I'].includes(node.tagName)
+        ? '*'
+        : node.tagName === 'CODE'
+          ? '`'
+          : '';
+    markdownOffset += marker.length;
+    for (const child of node.childNodes) {
+      if (visit(child)) return true;
+    }
+    markdownOffset += marker.length;
+    return false;
+  };
+  visit(root);
+  return result ?? 0;
+}
+
 function measuredOuterHeight(element) {
   const style = getComputedStyle(element);
   const marginTop = parseFloat(style.marginTop) || 0;
@@ -181,12 +239,17 @@ function estimateTableHeight(model, availableWidth = 360) {
 }
 
 export class WordProcessorTableWidget extends WidgetType {
-  constructor(tableMarkdown, from, to, { horizontalScrollEnabled = true } = {}) {
+  constructor(tableMarkdown, from, to, {
+    horizontalScrollEnabled = true,
+    onCellEntry = null
+  } = {}) {
     super();
     this.tableMarkdown = tableMarkdown;
     this.from = from;
     this.to = to;
     this.horizontalScrollEnabled = horizontalScrollEnabled !== false;
+    this.onCellEntry = onCellEntry;
+    this.exposeSourceOnCellEntry = typeof onCellEntry === 'function';
     this.model = TableModel.parse(tableMarkdown);
     const content = activeEditorContent();
     this.heightEstimate =
@@ -208,6 +271,7 @@ export class WordProcessorTableWidget extends WidgetType {
       other.from === this.from &&
       other.to === this.to &&
       other.horizontalScrollEnabled === this.horizontalScrollEnabled &&
+      other.exposeSourceOnCellEntry === this.exposeSourceOnCellEntry &&
       other.heightEstimate === this.heightEstimate
     );
   }
@@ -597,6 +661,17 @@ export class WordProcessorTableWidget extends WidgetType {
 
         longPressTriggered = true;
         if (!cellEl.isConnected) return;
+        if (this.onCellEntry?.({
+          row: r,
+          col: c,
+          textOffset: markdownOffsetAtRenderedPosition(cellEl, {
+            x: e.clientX,
+            y: e.clientY
+          })
+        })) {
+          e.preventDefault();
+          return;
+        }
         if (activeOverlay) {
           const current = activeOverlay._cellMeta;
           if (
@@ -628,6 +703,17 @@ export class WordProcessorTableWidget extends WidgetType {
           return;
         }
         clearTimeout(longPressTimer);
+        if (this.onCellEntry?.({
+          row: r,
+          col: c,
+          textOffset: markdownOffsetAtRenderedPosition(cellEl, {
+            x: e.clientX,
+            y: e.clientY
+          })
+        })) {
+          e.preventDefault();
+          return;
+        }
         if (activeOverlay) {
           const current = activeOverlay._cellMeta;
           if (

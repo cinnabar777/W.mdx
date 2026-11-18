@@ -52,7 +52,7 @@
             app:key="pref_heading_syntax_wmdx_enabled"
             app:title="Wmdx Decimal Headings"
             app:summary="Recognize .1 through .6"
-            app:defaultValue="true"
+            app:defaultValue="false"
             app:dependency="pref_heading_syntax_enabled" />
 
         <com.wmdx.markdownapp.ResetSwitchPreference
@@ -75,7 +75,7 @@
             app:summary="Syntax inserted by heading toolbar and shortcuts"
             android:entries="@array/heading_authoring_syntax_entries"
             android:entryValues="@array/heading_authoring_syntax_values"
-            app:defaultValue="wmdx"
+            app:defaultValue="hash"
             app:dependency="pref_heading_syntax_enabled" />
     </com.wmdx.markdownapp.ResetPreferenceCategory>
 

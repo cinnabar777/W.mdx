@@ -9,6 +9,8 @@ const fixture = JSON.parse(fs.readFileSync(
 ));
 
 test('GFM 0.29 non-HTML extension examples preserve semantics through import and export', async () => {
+  const { JSDOM } = require('jsdom');
+  const { marked } = require('marked');
   const { EditorState } = await import('@codemirror/state');
   const { markdown } = await import('@codemirror/lang-markdown');
   const { syntaxTree } = await import('@codemirror/language');
@@ -19,6 +21,21 @@ test('GFM 0.29 non-HTML extension examples preserve semantics through import and
   const { getMarkdownLinkInfo } = await import('../src/markdown-link-utils.mjs');
   const { convertFromMarkdown, exportMarkdown } =
     await import('../src/markdownConversion.mjs');
+  const DOMParser = new JSDOM('').window.DOMParser;
+  const summarizeHtml = html => {
+    const document = new DOMParser().parseFromString(html, 'text/html');
+    return {
+      text: document.body.textContent.replace(/\s+/g, ' ').trim(),
+      elements: Array.from(document.body.querySelectorAll('*'), element => [
+        element.tagName.toLowerCase(),
+        ...['href', 'align', 'type', 'checked', 'disabled', 'start', 'value']
+          .map(attribute => element.hasAttribute(attribute)
+            ? `${attribute}=${element.getAttribute(attribute)}`
+            : null)
+          .filter(Boolean)
+      ])
+    };
+  };
   const extensions = [
     Autolink,
     Table,
@@ -108,6 +125,17 @@ test('GFM 0.29 non-HTML extension examples preserve semantics through import and
       example.expected,
       `GFM import/export ${example.section} example ${example.number}`
     );
+    const warnings = [...new Set([...imported.warnings, ...exported.warnings])];
+    assert.deepEqual(
+      warnings,
+      [],
+      `GFM ${example.section} example ${example.number} converts without loss warnings`
+    );
+    assert.deepEqual(
+      summarizeHtml(marked.parse(exported.markdown, { gfm: true })),
+      summarizeHtml(marked.parse(example.markdown, { gfm: true })),
+      `GFM ${example.section} example ${example.number} preserves rendered meaning through conversion`
+    );
 
     if (example.number === 628) {
       const ftpNode = urlNodes.find(node =>
@@ -143,4 +171,46 @@ test('GFM raw-HTML tag-filter example remains outside the native parser corpus',
       reason: "Raw HTML tag filtering is tracked under Wmdx's no-HTML compatibility policy."
     }]
   );
+});
+
+test('GFM autolink examples preserve link targets without adding escapes', async t => {
+  const { JSDOM } = require('jsdom');
+  const { marked } = require('marked');
+  const { convertFromMarkdown, exportMarkdown } =
+    await import('../src/markdownConversion.mjs');
+  const DOMParser = new JSDOM('').window.DOMParser;
+  const summarize = html => {
+    const document = new DOMParser().parseFromString(html, 'text/html');
+    return {
+      text: document.body.textContent.replace(/\s+/g, ' ').trim(),
+      links: Array.from(document.querySelectorAll('a[href]'), anchor => [
+        anchor.textContent.replace(/\s+/g, ' ').trim(),
+        anchor.getAttribute('href')
+      ])
+    };
+  };
+  const examples = fixture.examples.filter(example => example.extension === 'autolink');
+  assert.equal(examples.length, 11);
+
+  for (const example of examples) {
+    await t.test(`GFM ${example.number}`, () => {
+      const imported = convertFromMarkdown(example.markdown, 'gfm');
+      const exported = exportMarkdown(imported.markdown, 'gfm');
+      const before = marked.parse(example.markdown, { gfm: true });
+      const after = marked.parse(exported.markdown, { gfm: true });
+
+      assert.deepEqual(imported.warnings, [], `GFM ${example.number} import warnings`);
+      assert.deepEqual(exported.warnings, [], `GFM ${example.number} export warnings`);
+      assert.equal(
+        exported.markdown,
+        example.markdown,
+        `GFM ${example.number} adds no unnecessary escapes or source changes`
+      );
+      assert.deepEqual(
+        summarize(after),
+        summarize(before),
+        `GFM ${example.number} preserves rendered autolink destinations`
+      );
+    });
+  }
 });

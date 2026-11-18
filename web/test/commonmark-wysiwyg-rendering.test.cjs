@@ -564,6 +564,7 @@ test('CommonMark inline syntax, hard breaks, and list indentation render without
     assert.equal(sourceOrderedContent.querySelectorAll('.cm-list-item').length, 0,
       'Source does not apply rendered ordered-list layout');
     assert.equal(window.editorBridge.getMarkdown(), orderedStyleSource);
+
     assert.deepEqual(errors, []);
   } finally {
     dom.window.close();

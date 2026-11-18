@@ -2,22 +2,28 @@ const CALLOUT_FLAVORS = ['wmdx', 'obsidian'];
 const AUTHORING_SYNTAXES = new Set(CALLOUT_FLAVORS);
 
 export const DEFAULT_CALLOUT_SYNTAX_SETTINGS = Object.freeze({
-  enabled: true,
-  wmdx: true,
-  obsidian: true,
-  authoringSyntax: 'wmdx'
+  enabled: false,
+  wmdx: false,
+  obsidian: false,
+  authoringSyntax: null
 });
 
 export function normalizeCalloutSyntaxSettings(preferences = {}) {
   const settings = {
-    enabled: preferences.pref_callout_syntax_enabled !== false,
-    wmdx: preferences.pref_callout_syntax_wmdx_enabled !== false,
-    obsidian: preferences.pref_callout_syntax_obsidian_enabled !== false
+    enabled:
+      preferences.pref_callout_syntax_enabled ??
+      DEFAULT_CALLOUT_SYNTAX_SETTINGS.enabled,
+    wmdx:
+      preferences.pref_callout_syntax_wmdx_enabled ??
+      DEFAULT_CALLOUT_SYNTAX_SETTINGS.wmdx,
+    obsidian:
+      preferences.pref_callout_syntax_obsidian_enabled ??
+      DEFAULT_CALLOUT_SYNTAX_SETTINGS.obsidian
   };
   const enabledFlavors = CALLOUT_FLAVORS.filter(flavor => settings[flavor]);
   const storedAuthoring = String(
     preferences.pref_callout_authoring_syntax ??
-      DEFAULT_CALLOUT_SYNTAX_SETTINGS.authoringSyntax
+      DEFAULT_CALLOUT_SYNTAX_SETTINGS.authoringSyntax ?? ''
   ).toLowerCase();
   settings.authoringSyntax = enabledFlavors.length === 1
     ? enabledFlavors[0]

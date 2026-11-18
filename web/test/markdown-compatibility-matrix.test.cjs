@@ -308,8 +308,8 @@ test('standalone MHTML images and attachments survive each flavor HTML round tri
         if (resource.kind === 'image') {
           assert.deepEqual(
             rendered.warnings,
-            ['Raw HTML was preserved during Markdown conversion; unconverted tags may not render like the source dialect.'],
-            `${profile} image HTML fallback warning`
+            [],
+            `${profile} image HTML warnings`
           );
         } else {
           assert.deepEqual(rendered.warnings, [], `${profile} HTML warnings`);
@@ -553,6 +553,68 @@ test('GFM tasks, strike, and aligned tables survive HTML and Markdown round trip
   );
 });
 
+test('CommonMark checkbox HTML round-trips to editable task markers', async () => {
+  const { convertFromMarkdown, exportMarkdown } =
+    await import('../src/markdownConversion.mjs');
+  const source = [
+    '- <input type="checkbox" disabled> Unchecked',
+    '- <input type="checkbox" disabled checked> Checked',
+    '> - <input type="checkbox" disabled> Quoted unchecked',
+    '> - <input type="checkbox" disabled checked> Quoted checked'
+  ].join('\n');
+  const expected = [
+    '- [ ] Unchecked',
+    '- [x] Checked',
+    '> - [ ] Quoted unchecked',
+    '> - [x] Quoted checked'
+  ].join('\n');
+  const imported = convertFromMarkdown(source, 'commonmark');
+  const returned = exportMarkdown(imported.markdown, 'obsidian');
+  const commonMarkRoundTrip = exportMarkdown(imported.markdown, 'commonmark');
+
+  assert.equal(imported.markdown, expected);
+  assert.deepEqual(imported.warnings, [
+    'A disabled HTML checkbox in a Markdown list was restored as an editable task item.'
+  ]);
+  assert.equal(returned.markdown, expected);
+  assert.deepEqual(returned.warnings, []);
+  assert.equal(commonMarkRoundTrip.markdown, source);
+  assert.deepEqual(commonMarkRoundTrip.warnings, [
+    'CommonMark has no task-list extension; checkboxes use inline HTML.'
+  ]);
+});
+
+test('inline triple-backtick spans do not hide following Markdown conversions', async () => {
+  const { convertFromMarkdown, exportMarkdown } =
+    await import('../src/markdownConversion.mjs');
+  const { renderMarkdownHtml } = await import('../src/htmlExport.mjs');
+  const dom = new JSDOM('');
+  const source = '```中文测试``` is inline code.\n\n- [ ] Later task';
+  const imported = convertFromMarkdown(source, 'gfm');
+  const commonmark = exportMarkdown(imported.markdown, 'commonmark');
+  const before = renderMarkdownHtml(source, {
+    profile: 'gfm',
+    window: dom.window
+  });
+  const after = renderMarkdownHtml(commonmark.markdown, {
+    profile: 'commonmark',
+    window: dom.window
+  });
+
+  assert.equal(imported.markdown, source);
+  assert.equal(
+    commonmark.markdown,
+    '```中文测试``` is inline code.\n\n- <input type="checkbox" disabled> Later task'
+  );
+  assert.deepEqual(commonmark.warnings, [
+    'CommonMark has no task-list extension; checkboxes use inline HTML.'
+  ]);
+  assert.equal(
+    canonicalizeHtml(after.html, dom.window.document),
+    canonicalizeHtml(before.html, dom.window.document)
+  );
+});
+
 test('Obsidian callout, wikilink, highlight, and footnote survive HTML round trip', async () => {
   const { convertFromMarkdown, convertFromHtml, exportMarkdown } =
     await import('../src/markdownConversion.mjs');
@@ -603,20 +665,39 @@ test('Obsidian callout, wikilink, highlight, and footnote survive HTML round tri
 
 test('MHTML TOC HTML imports into the selected Markdown flavor', async () => {
   const { convertHtmlToMarkdownProfile } = await import('../src/markdownPaste.mjs');
+  const { convertFromMarkdown, exportMarkdown } =
+    await import('../src/markdownConversion.mjs');
   const { JSDOM } = require('jsdom');
   const dom = new JSDOM('');
-  const root = 'https://appassets.androidplatform.net/assets/www/';
+  const pageUrl = 'https://appassets.androidplatform.net/assets/www/document.html';
   const html = [
-    '<nav><a href="https://appassets.androidplatform.net/assets/www/#heading-1">Project setup</a></nav>',
+    '<nav class="toc-container"><h2 class="toc-title">Table of Contents</h2>',
+    '<ul class="toc-list">',
+    `<li class="toc-item"><a href="${pageUrl}#heading-1">Project setup</a></li>`,
+    `<li class="toc-item"><a href="${pageUrl}#heading-2">Second copy</a></li>`,
+    '</ul></nav>',
     '<h1 id="heading-1">Project Setup</h1>',
+    '<h1 id="heading-2">Project Setup</h1>',
     '<p><a href="https://outside.example/#heading-1">External reference</a></p>'
   ].join('');
 
   const expected = {
-    wmdx: /^\[#Project Setup\|Project setup\|\|\]$/m,
-    commonmark: /\[Project setup\]\(#project-setup\)/,
-    gfm: /\[Project setup\]\(#project-setup\)/,
-    obsidian: /^\[\[#Project Setup\|Project setup\]\]$/m
+    wmdx: [
+      /^- \[#Project Setup\|Project setup\|\|\]$/m,
+      /^- \[#Project Setup 1\|Second copy\|\|\]$/m
+    ],
+    commonmark: [
+      /\[Project setup\]\(#project-setup\)/,
+      /\[Second copy\]\(#project-setup-1\)/
+    ],
+    gfm: [
+      /\[Project setup\]\(#project-setup\)/,
+      /\[Second copy\]\(#project-setup-1\)/
+    ],
+    obsidian: [
+      /^- \[\[#Project Setup\|Project setup\]\]$/m,
+      /^- \[\[#Project Setup 1\|Second copy\]\]$/m
+    ]
   };
 
   for (const profile of ['wmdx', 'commonmark', 'gfm', 'obsidian']) {
@@ -624,10 +705,17 @@ test('MHTML TOC HTML imports into the selected Markdown flavor', async () => {
       html,
       profile,
       dom.window.DOMParser,
-      { baseLocation: root }
+      { baseLocation: pageUrl }
     );
     assert.deepEqual(converted.warnings, [], `${profile} warnings`);
-    assert.match(converted.markdown, expected[profile], `${profile} TOC syntax`);
+    for (const pattern of expected[profile]) {
+      assert.match(converted.markdown, pattern, `${profile} TOC syntax`);
+    }
+    assert.doesNotMatch(
+      converted.markdown,
+      /^ {2,}- /m,
+      `${profile} generated TOC items must remain a flat list`
+    );
     assert.match(
       converted.markdown,
       /\[External reference\]\(https:\/\/outside\.example\/#heading-1\)/,
@@ -638,5 +726,77 @@ test('MHTML TOC HTML imports into the selected Markdown flavor', async () => {
       /appassets\.androidplatform\.net/,
       `${profile} must not leak the MHTML archive base into Markdown`
     );
+    const importedAgain = profile === 'wmdx'
+      ? converted
+      : convertFromMarkdown(converted.markdown, profile);
+    const roundTripped = profile === 'wmdx'
+      ? importedAgain
+      : exportMarkdown(importedAgain.markdown, profile);
+    assert.equal(
+      roundTripped.markdown,
+      converted.markdown,
+      `${profile} TOC export/import must be stable`
+    );
+  }
+});
+
+test('Curated Obsidian syntax cases preserve semantics through Wmdx round trips', async t => {
+  const examples = require('./fixtures/obsidian-rendering.json').cases;
+  const { convertFromMarkdown, exportMarkdown } =
+    await import('../src/markdownConversion.mjs');
+  const { renderMarkdownHtml } = await import('../src/htmlExport.mjs');
+  const dom = new JSDOM('');
+  const document = dom.window.document;
+  assert.equal(examples.length, 7);
+
+  for (const example of examples) {
+    await t.test(example.feature, () => {
+      const imported = convertFromMarkdown(example.markdown, 'obsidian');
+      const exported = exportMarkdown(imported.markdown, 'obsidian');
+      const before = renderMarkdownHtml(example.markdown, {
+        profile: 'obsidian',
+        window: dom.window
+      });
+      const after = renderMarkdownHtml(exported.markdown, {
+        profile: 'obsidian',
+        window: dom.window
+      });
+      const expectedMarkdown = example.feature === 'callout with formatted body'
+        ? `${example.markdown}\n`
+        : example.markdown;
+
+      assert.deepEqual(imported.warnings, []);
+      assert.deepEqual(exported.warnings, []);
+      assert.equal(exported.markdown, expectedMarkdown);
+      assert.deepEqual(after.warnings, before.warnings);
+      assert.equal(
+        canonicalizeHtml(after.html, document),
+        canonicalizeHtml(before.html, document),
+        `${example.feature} preserves its rendered meaning`
+      );
+    });
+  }
+});
+
+test('Obsidian custom-protocol links preserve query equals signs across flavors', async t => {
+  const source = '[Note](obsidian://open?vault=MainVault&file=Note.md)';
+  const { convertFromMarkdown, exportMarkdown } =
+    await import('../src/markdownConversion.mjs');
+
+  for (const target of ['commonmark', 'gfm', 'obsidian']) {
+    await t.test(target, () => {
+      const imported = convertFromMarkdown(source, 'obsidian');
+      const exported = exportMarkdown(imported.markdown, target);
+      const returned = convertFromMarkdown(exported.markdown, target);
+      const backToObsidian = exportMarkdown(returned.markdown, 'obsidian');
+
+      assert.deepEqual(imported.warnings, []);
+      assert.deepEqual(exported.warnings, []);
+      assert.equal(imported.markdown, source);
+      assert.equal(exported.markdown, source);
+      assert.equal(backToObsidian.markdown, source);
+      assert.deepEqual(returned.warnings, []);
+      assert.deepEqual(backToObsidian.warnings, []);
+    });
   }
 });

@@ -3,6 +3,7 @@ import { markdown } from '@codemirror/lang-markdown';
 import { ensureSyntaxTree } from '@codemirror/language';
 import { GFM, Strikethrough, Table, TaskList } from '@lezer/markdown';
 import { marked } from 'marked';
+import TurndownService from 'turndown';
 import {
   formatWmdxResourceSyntax,
   getWmdxResourceFallbackTitle,
@@ -241,28 +242,45 @@ function protectCodeFences(source, transformLines) {
   const protectedLines = new Set();
   let fence = null;
   let mathFence = null;
+  let protectedMathLines = [];
 
   for (let index = 0; index < lines.length; index += 1) {
     const line = lines[index];
+    const opening = /^ {0,3}(`{3,}|~{3,})(.*)$/.exec(line);
     if (fence) {
       protectedLines.add(index);
       const close = new RegExp(`^ {0,3}${fence.character}{${fence.length},}[ \\t]*$`);
       if (close.test(line)) fence = null;
       continue;
     }
+    if (
+      mathFence &&
+      opening &&
+      !(opening[1][0] === '`' && opening[2].includes('`'))
+    ) {
+      // A Markdown code fence takes precedence over an unmatched math opener.
+      // Otherwise the abandoned math range can consume and later unprotect the
+      // code fence, allowing Wmdx inline syntax to rewrite code contents.
+      mathFence = null;
+      protectedMathLines = [];
+    }
     if (mathFence) {
       protectedLines.add(index);
+      protectedMathLines.push(index);
       if (
         (mathFence === '$$' && /^\s*\$\$\s*$/.test(line)) ||
         (mathFence === '\\]' && /^\s*\\\]\s*$/.test(line)) ||
         (mathFence.startsWith('\\end{') && line.includes(mathFence))
       ) {
         mathFence = null;
+        protectedMathLines = [];
       }
       continue;
     }
-    const opening = /^ {0,3}(`{3,}|~{3,})/.exec(line);
-    if (opening) {
+    if (
+      opening &&
+      !(opening[1][0] === '`' && opening[2].includes('`'))
+    ) {
       fence = { character: opening[1][0], length: opening[1].length };
       protectedLines.add(index);
       continue;
@@ -270,18 +288,24 @@ function protectCodeFences(source, transformLines) {
     if (/^\s*\$\$\s*$/.test(line)) {
       mathFence = '$$';
       protectedLines.add(index);
+      protectedMathLines = [index];
       continue;
     }
     if (/^\s*\\\[\s*$/.test(line)) {
       mathFence = '\\]';
       protectedLines.add(index);
+      protectedMathLines = [index];
       continue;
     }
     const mathEnvironment = /^\s*\\begin\{(equation|align|gather|multline)\*?\}/.exec(line);
     if (mathEnvironment) {
       mathFence = `\\end{${mathEnvironment[1]}}`;
       protectedLines.add(index);
+      protectedMathLines = [index];
     }
+  }
+  if (mathFence) {
+    for (const index of protectedMathLines) protectedLines.delete(index);
   }
 
   const frontmatterEndLine = findYamlFrontmatterEndLine(lines);
@@ -305,15 +329,45 @@ function protectRawHtmlTableLines(lines, protectedLines) {
   }
 }
 
+function findInlineMathRanges(value) {
+  const text = String(value ?? '');
+  const patterns = [
+    /(?<!\\)\$\$[\s\S]*?(?<!\\)\$\$/g,
+    /\\\([\s\S]*?\\\)/g,
+    /\\\[[\s\S]*?\\\]/g,
+    /(?<!\\)\$(?!\$)([^$\n]*[\\^_{}=+*/-][^$\n]*)(?<!\\)\$(?!\$)/g
+  ];
+  const candidates = [];
+  for (const pattern of patterns) {
+    for (const match of text.matchAll(pattern)) {
+      candidates.push({
+        from: match.index,
+        to: match.index + match[0].length,
+        value: match[0]
+      });
+    }
+  }
+  candidates.sort((left, right) =>
+    left.from - right.from || right.to - left.to
+  );
+  const ranges = [];
+  for (const candidate of candidates) {
+    if (ranges.some(range =>
+      candidate.from < range.to && candidate.to > range.from
+    )) continue;
+    ranges.push(candidate);
+  }
+  return ranges;
+}
+
 function protectInlineMathSyntax(text, protect) {
-  return String(text ?? '')
-    .replace(/(?<!\\)\$\$[\s\S]*?(?<!\\)\$\$/g, protect)
-    .replace(/\\\([\s\S]*?\\\)/g, protect)
-    .replace(/\\\[[\s\S]*?\\\]/g, protect)
-    .replace(
-      /(?<!\\)\$(?!\$)([^$\n]*[\\^_{}=+*/-][^$\n]*)(?<!\\)\$(?!\$)/g,
-      protect
-    );
+  let result = String(text ?? '');
+  const ranges = findInlineMathRanges(result);
+  for (let index = ranges.length - 1; index >= 0; index -= 1) {
+    const { from, to, value } = ranges[index];
+    result = result.slice(0, from) + protect(value) + result.slice(to);
+  }
+  return result;
 }
 
 function protectMathForStandardNormalization(source) {
@@ -491,13 +545,20 @@ function convertInlineLinksToWmdx(line, warnings) {
 
 function buildHeadingFragmentLookup(lines, protectedLines) {
   const headings = new Map();
+  const occurrences = new Map();
   for (let index = 0; index < lines.length; index += 1) {
     if (protectedLines.has(index)) continue;
     const match = /^\.([1-6])\s+(.+?)\s*$/.exec(lines[index]);
     if (!match) continue;
     const title = match[2].trim();
-    const slug = headingFragmentSlug(title);
-    if (slug && !headings.has(slug)) headings.set(slug, title);
+    const base = headingFragmentSlug(title);
+    if (!base) continue;
+    const occurrence = occurrences.get(base) ?? 0;
+    occurrences.set(base, occurrence + 1);
+    const fragment = occurrence === 0 ? base : `${base}-${occurrence}`;
+    if (!headings.has(fragment)) {
+      headings.set(fragment, occurrence === 0 ? title : `${title} ${occurrence}`);
+    }
   }
   return headings;
 }
@@ -505,6 +566,7 @@ function buildHeadingFragmentLookup(lines, protectedLines) {
 function removeRedundantHeadingAnchors(lines, protectedLines) {
   const nextLines = [];
   const nextProtectedLines = new Set();
+  const headingOccurrences = new Map();
   for (let index = 0; index < lines.length; index += 1) {
     if (!protectedLines.has(index)) {
       const anchor = /^\s*<a\s+id=["']([^"']+)["']\s*><\/a>\s*$/i.exec(lines[index]);
@@ -514,12 +576,23 @@ function removeRedundantHeadingAnchors(lines, protectedLines) {
         const heading = !protectedLines.has(headingIndex)
           ? /^\.([1-6])\s+(.+?)\s*$/.exec(lines[headingIndex] ?? '')
           : null;
-        if (heading &&
-            headingFragmentSlug(anchor[1]) === headingFragmentSlug(heading[2])) {
-          index = headingIndex - 1;
-          continue;
+        if (heading) {
+          const base = headingFragmentSlug(heading[2]);
+          const occurrence = headingOccurrences.get(base) ?? 0;
+          const expectedFragment = occurrence === 0 ? base : `${base}-${occurrence}`;
+          if (anchor[1].toLocaleLowerCase() === expectedFragment.toLocaleLowerCase()) {
+            index = headingIndex - 1;
+            continue;
+          }
         }
       }
+    }
+    const heading = !protectedLines.has(index)
+      ? /^\.([1-6])\s+(.+?)\s*$/.exec(lines[index])
+      : null;
+    if (heading) {
+      const base = headingFragmentSlug(heading[2]);
+      if (base) headingOccurrences.set(base, (headingOccurrences.get(base) ?? 0) + 1);
     }
     if (protectedLines.has(index)) nextProtectedLines.add(nextLines.length);
     nextLines.push(lines[index]);
@@ -868,7 +941,7 @@ function convertHeadings(source, protectedLines = new Set()) {
         // Wmdx decimal markers are not recognized consistently inside Markdown
         // containers; retain the already-supported ATX spelling there.
         if (nestedInContainer) return;
-        const raw = source.slice(node.from, node.to);
+        const raw = source.slice(node.from, state.doc.lineAt(node.from).to);
         const closing = /^(#{1,6})[ \t]+([\s\S]*?)(?:[ \t]+#+[ \t]*)?$/.exec(raw);
         if (!closing) return;
         replacements.push({
@@ -900,6 +973,11 @@ function convertHeadings(source, protectedLines = new Set()) {
       replacements.push({
         from: node.from,
         to: node.to,
+        endLine: state.doc.lineAt(Math.max(node.from, node.to - 1)).number - 1,
+        removedLineCount: Math.max(
+          0,
+          state.doc.lineAt(Math.max(node.from, node.to - 1)).number - line.number
+        ),
         text: `.${setext[1]} ${title}`
       });
     },
@@ -913,6 +991,19 @@ function convertHeadings(source, protectedLines = new Set()) {
     output = output.slice(0, replacement.from) +
       replacement.text +
       output.slice(replacement.to);
+  }
+  if (protectedLines.size && replacements.some(item => item.removedLineCount > 0)) {
+    const remapped = [...protectedLines].map(lineIndex => {
+      const removedBefore = replacements.reduce(
+        (total, item) => total + (
+          item.endLine < lineIndex ? item.removedLineCount : 0
+        ),
+        0
+      );
+      return lineIndex - removedBefore;
+    });
+    protectedLines.clear();
+    for (const lineIndex of remapped) protectedLines.add(lineIndex);
   }
   return output.split('\n');
 }
@@ -970,7 +1061,7 @@ function convertObsidianCallouts(lines, protectedLines, format) {
   return output;
 }
 
-function convertInlineHtmlToMarkdown(line, warnings, Parser) {
+function convertInlineHtmlToMarkdown(line, warnings, Parser, options = {}) {
   const protectedValues = [];
   const protect = value => {
     const marker = `\uE010${protectedValues.length}\uE011`;
@@ -994,6 +1085,12 @@ function convertInlineHtmlToMarkdown(line, warnings, Parser) {
     )
     .replace(/<!--[\s\S]*?-->/g, protect);
   text = protectTagMarkupInsideAttributes(text, protect);
+  if (options.preserveUnsupportedHtmlAsRaw) {
+    text = text.replace(
+      /<(del|ins|i|u|sup|sub|mark|kbd)\b[^>]*>[\s\S]*?<\/\1\s*>/gi,
+      protect
+    );
+  }
   for (const range of nestedInlineEmphasisHtmlRanges(text).sort((left, right) =>
     right.from - left.from
   )) {
@@ -1008,12 +1105,16 @@ function convertInlineHtmlToMarkdown(line, warnings, Parser) {
         if (isEscapedMarkdownDelimiter(wholeText, offset)) return source;
         const media = new Parser().parseFromString(source, 'text/html')
           .querySelector(tag.toLowerCase());
-        return media ? htmlBlock(media, warnings) : source;
+        return media ? htmlBlock(media, warnings, 0, { preserveUnsupportedHtmlAsRaw: options.preserveUnsupportedHtmlAsRaw === true }) : source;
       }
     );
     text = text.replace(/<a\b[^>]*>[\s\S]*?<\/a\s*>/gi, (source, offset, wholeText) => {
       if (isEscapedMarkdownDelimiter(wholeText, offset)) return source;
       const anchor = new Parser().parseFromString(source, 'text/html').querySelector('a');
+      if (
+        anchor &&
+        shouldPreserveRawHtmlLink(anchor, { preserveUnsupportedHtmlAsRaw: options.preserveUnsupportedHtmlAsRaw === true })
+      ) return protect(source);
       if (
         anchor &&
         !anchor.textContent?.trim() &&
@@ -1025,7 +1126,7 @@ function convertInlineHtmlToMarkdown(line, warnings, Parser) {
         );
         return protect(source);
       }
-      return anchor ? inlineHtmlNode(anchor, warnings) : source;
+      return anchor ? inlineHtmlNode(anchor, warnings, { preserveUnsupportedHtmlAsRaw: options.preserveUnsupportedHtmlAsRaw === true }) : source;
     });
   }
   text = text
@@ -1068,6 +1169,13 @@ function convertInlineHtmlToMarkdown(line, warnings, Parser) {
       if (isEscapedMarkdownDelimiter(wholeText, offset)) return source;
       const image = new Parser().parseFromString(source, 'text/html').querySelector('img');
       if (!image) return source;
+      if (image.hasAttribute('title')) {
+        addWarning(
+          warnings,
+          'HTML image tooltip titles have no native Wmdx field; raw image HTML was preserved.'
+        );
+        return protect(source);
+      }
       if (image.hasAttribute('style')) warnInlineHtmlStyle('style=', warnings);
       return htmlImageResource(image, warnings) || source;
     });
@@ -1081,7 +1189,34 @@ function convertInlineHtmlToMarkdown(line, warnings, Parser) {
   return text;
 }
 
-function protectTopLevelMarkdownHtmlBlocks(source, format, Parser, warnings) {
+function containsMarkdownInlineSyntax(text) {
+  const syntaxPatterns = [
+    /\*\*?[^*\n]+\*\*?/,
+    /__?[^_\n]+__?/,
+    /~~[^~\n]+~~/,
+    /==[^=\n]+==/,
+    /`+[^`\n]+`+/,
+    /\[[^\]\n]+\]\([^)]+\)/
+  ];
+  return String(text ?? '').split(/\r?\n/).some(line =>
+    syntaxPatterns.some(pattern => pattern.test(line))
+  );
+}
+
+function htmlContainerBalance(source, tagName) {
+  let balance = 0;
+  const tagPattern = new RegExp(`<\\/?${tagName}\\b[^>]*>`, 'gi');
+  for (const match of String(source ?? '').matchAll(tagPattern)) {
+    if (/^<\s*\//.test(match[0])) {
+      balance -= 1;
+    } else if (!/\/\s*>$/.test(match[0])) {
+      balance += 1;
+    }
+  }
+  return balance;
+}
+
+function protectTopLevelMarkdownHtmlBlocks(source, format, Parser, warnings, { preserveRawHtmlContainers = false, preserveUnsupportedHtmlAsRaw = false } = {}) {
   if (!Parser) return { source, restore: text => text };
   const tokens = marked.lexer(source, { gfm: format !== 'commonmark' });
   const replacements = [];
@@ -1106,12 +1241,43 @@ function protectTopLevelMarkdownHtmlBlocks(source, format, Parser, warnings) {
         raw += String(tokens[tokenIndex].raw ?? '');
       }
     }
+    const containerTag =
+      token.type === 'html' && token.block === true
+        ? /^\s*<([a-z][\w:-]*)\b/i.exec(raw)?.[1]?.toLowerCase()
+        : null;
+    if (containerTag && htmlContainerBalance(raw, containerTag) > 0) {
+      let balance = htmlContainerBalance(raw, containerTag);
+      let grouped = raw;
+      let endTokenIndex = tokenIndex;
+      for (let next = tokenIndex + 1; next < tokens.length; next += 1) {
+        const candidate = tokens[next];
+        grouped += String(candidate.raw ?? '');
+        if (candidate.type === 'html') {
+          balance += htmlContainerBalance(candidate.raw, containerTag);
+        }
+        if (balance <= 0) {
+          endTokenIndex = next;
+          break;
+        }
+      }
+      if (endTokenIndex > tokenIndex) {
+        raw = grouped;
+        tokenIndex = endTokenIndex;
+      }
+    }
     const from = source.indexOf(raw, cursor);
     if (from < 0) continue;
+    const before = source.slice(0, from);
+    const after = source.slice(from + raw.length);
+    const touchesMarkdownContent = Boolean(
+      (before.trim() && !/\n[ \t]*\n[ \t]*$/.test(before)) ||
+      (after.trim() && !/^[ \t]*\n[ \t]*\n/.test(after))
+    );
     chunks.push(source.slice(cursor, from));
     let replacement = raw;
     if (token.type === 'html' && token.block === true) {
-      const document = /^\s*<(?:a|table)\b/i.test(raw)
+      const needsTextInspection = /[*_~=`]/.test(raw);
+      const document = /^\s*<(?:a|table)\b/i.test(raw) || needsTextInspection
         ? new Parser().parseFromString(raw, 'text/html')
         : null;
       const anchor = document?.body?.querySelector('a[href]');
@@ -1129,7 +1295,55 @@ function protectTopLevelMarkdownHtmlBlocks(source, format, Parser, warnings) {
         table &&
         !table.querySelector('thead, th')
       );
-      if (standaloneHeaderlessTable) {
+      const activeElement = raw.match(
+        /<\s*(script|style|iframe|object|embed|form)\b/i
+      )?.[1]?.toLowerCase();
+      const hasActiveElement = Boolean(activeElement);
+      const containsMarkdownTextSyntax = Boolean(
+        document &&
+        !hasActiveElement &&
+        containsMarkdownInlineSyntax(document.body?.textContent)
+      );
+      const containsMarkdownBlockSyntax =
+        /^[ \t]{0,3}(?:`{3,}|~{3,})/m.test(raw);
+      const isCommentOrDeclaration =
+        /^\s*(?:<!--|<!|<\?)/i.test(raw);
+      const isProcessingInstruction = /^\s*<\?/.test(raw);
+      const unclosedHtmlContainer = Boolean(
+        containerTag &&
+        (htmlContainerBalance(raw, containerTag) > 0 ||
+          (containerTag === 'div' &&
+            /^\s*<div\b/i.test(raw) &&
+            !/<\/div\s*>/i.test(raw)))
+      );
+      const preserveForContext =
+        (touchesMarkdownContent && !hasActiveElement && !isCommentOrDeclaration) ||
+        (unclosedHtmlContainer && !hasActiveElement);
+      if (preserveRawHtmlContainers && (containerTag === 'div' || containerTag === 'section')) {
+        let marker;
+        do {
+          marker = `\uE020MDXHTMLBLOCK${markerIndex++}\uE021`;
+        } while (source.includes(marker));
+        replacements.push({ marker, value: raw });
+        replacement = marker;
+        addWarning(warnings, `HTML container <${containerTag}> was preserved as raw markup during import.`);
+      } else if (isProcessingInstruction || isCommentOrDeclaration) {
+        let marker;
+        do {
+          marker = `\uE020MDXHTMLBLOCK${markerIndex++}\uE021`;
+        } while (source.includes(marker));
+        replacements.push({ marker, value: raw });
+        replacement = marker;
+        addWarning(
+          warnings,
+          'An HTML block without convertible text was preserved unchanged.'
+        );
+      } else if (
+        standaloneHeaderlessTable ||
+        containsMarkdownTextSyntax ||
+        containsMarkdownBlockSyntax ||
+        preserveForContext
+      ) {
         let marker;
         do {
           marker = `\uE020MDXHTMLBLOCK${markerIndex++}\uE021`;
@@ -1147,7 +1361,13 @@ function protectTopLevelMarkdownHtmlBlocks(source, format, Parser, warnings) {
         );
       } else {
         try {
-          const converted = convertFromHtml(raw, Parser);
+          const converted = convertFromHtml(raw, Parser, {
+            preserveRawHtmlContainers,
+            preserveUnsupportedHtmlAsRaw
+          });
+          if (activeElement) {
+            addWarning(warnings, `Active HTML element <${activeElement}> was omitted.`);
+          }
           let marker;
           do {
             marker = `\uE020MDXHTMLBLOCK${markerIndex++}\uE021`;
@@ -1157,9 +1377,6 @@ function protectTopLevelMarkdownHtmlBlocks(source, format, Parser, warnings) {
           replacement = marker;
         } catch (error) {
           if (!String(error?.message).includes('No readable document content')) throw error;
-          const activeElement = raw.match(
-            /<\s*(script|style|iframe|object|embed|form)\b/i
-          )?.[1]?.toLowerCase();
           if (activeElement) {
             addWarning(warnings, `Active HTML element <${activeElement}> was omitted.`);
             replacement = '';
@@ -1196,6 +1413,7 @@ const RAW_HTML_BLOCK_TAGS = new Set([
   'hr', 'html', 'iframe', 'legend', 'li', 'link', 'main', 'menu', 'menuitem',
   'nav', 'noframes', 'ol', 'optgroup', 'option', 'p', 'param', 'search',
   'pre', 'script', 'section', 'style', 'summary', 'table', 'tbody', 'td',
+  'textarea',
   'tfoot', 'th', 'thead', 'title', 'tr', 'track', 'ul'
 ]);
 const RAW_HTML_BLOCK_START = new RegExp(
@@ -1204,6 +1422,15 @@ const RAW_HTML_BLOCK_START = new RegExp(
 );
 
 function isRawHtmlBlockLine(line, state) {
+  if (state.processingInstruction) {
+    state.processingInstruction = !line.includes('?>');
+    return true;
+  }
+  const instructionStart = line.indexOf('<?');
+  if (instructionStart >= 0) {
+    state.processingInstruction = !line.slice(instructionStart + 2).includes('?>');
+    return true;
+  }
   const opensBlock = RAW_HTML_BLOCK_START.test(line);
   if (!state.tags.length && !state.comment && !opensBlock && !line.includes('<!--')) {
     return false;
@@ -1226,6 +1453,35 @@ function isRawHtmlBlockLine(line, state) {
     }
   }
   return true;
+}
+
+function protectRawHtmlBlockLines(lines, protectedLines) {
+  const state = { tags: [], comment: false, processingInstruction: false };
+  for (let index = 0; index < lines.length; index += 1) {
+    if (
+      protectedLines.has(index) &&
+      !state.tags.length &&
+      !state.comment &&
+      !state.processingInstruction
+    ) {
+      continue;
+    }
+    if (isRawHtmlBlockLine(lines[index], state)) protectedLines.add(index);
+  }
+}
+
+function restoreDisabledHtmlTaskItem(line) {
+  const match = /^((?:[ \t]*>\s*)*[ \t]*)([-+*]|\d+[.)])\s+<input\b([^>]*)>(?:[ \t]+(.*))?[ \t]*$/i
+    .exec(line);
+  if (!match) return null;
+  const attributes = match[3];
+  if (!/(?:^|\s)type\s*=\s*(?:"checkbox"|'checkbox'|checkbox)(?=\s|$)/i.test(attributes) ||
+      !/(?:^|\s)disabled(?:\s|=|$)/i.test(attributes)) {
+    return null;
+  }
+  const checked = /(?:^|\s)checked(?:\s|=|$)/i.test(attributes);
+  const text = (match[4] ?? '').trimEnd();
+  return `${match[1]}${match[2]} [${checked ? 'x' : ' '}]${text ? ` ${text}` : ''}`;
 }
 
 function normalizeCommonMarkReferenceLabel(value) {
@@ -1280,6 +1536,21 @@ function protectObsidianCommonMarkReferenceCollisions(
   });
 }
 
+function protectBareAutolinks(text, protect) {
+  return text.replace(/(?:[a-z][a-z\d+.-]*:\/\/|www\.)[^\s<>]+/gi, (match, offset) => {
+    const resourceStart = text.lastIndexOf('[', offset);
+    const resourceEnd = text.indexOf(']', offset);
+    if (
+      resourceStart >= 0 &&
+      resourceEnd >= offset &&
+      parseWmdxResourceSyntax(text.slice(resourceStart, resourceEnd + 1))
+    ) {
+      return match;
+    }
+    return protect(match);
+  });
+}
+
 function escapeDialectSpecificWmdxSyntax(line, format, commonMarkReferences = new Set()) {
   const protectedValues = [];
   let text = String(line ?? '');
@@ -1296,6 +1567,7 @@ function escapeDialectSpecificWmdxSyntax(line, format, commonMarkReferences = ne
     .replace(/<(?:img|br)\b[^>]*\/?>/gi, protect)
     .replace(/(`+)([\s\S]*?)\1/g, protect)
     .replace(/<(?:https?|ftp):\/\/[^>\s]+>|<mailto:[^>\s]+>|<[^\s<>@]+@[^\s<>@]+\.[^\s<>@]+>/gi, protect);
+  text = protectBareAutolinks(text, protect);
   text = protectHtmlTagTokens(text, protect);
   text = protectInlineMathSyntax(text, protect);
   if (format === 'commonmark') {
@@ -1383,7 +1655,10 @@ export function convertFromMarkdown(source, format = 'commonmark', options = {})
     ? null
     : options.DOMParser ?? globalThis.DOMParser;
   const protectedHtml = protectTopLevelMarkdownHtmlBlocks(
-    sourceText, format, htmlParser, warnings
+    sourceText, format, htmlParser, warnings, {
+      preserveRawHtmlContainers: options.preserveRawHtmlContainers === true,
+      preserveUnsupportedHtmlAsRaw: options.preserveUnsupportedHtmlAsRaw === true
+    }
   );
   const normalizedSource = normalizeStandardMarkdownMarkers(protectedHtml.source);
   const converted = protectCodeFences(normalizedSource, (originalLines, protectedLines) => {
@@ -1399,6 +1674,14 @@ export function convertFromMarkdown(source, format = 'commonmark', options = {})
     const rawHtmlBlockState = { tags: [], comment: false };
     return lines.map((line, index) => {
       if (headingProtectedLines.has(index)) return line;
+      const restoredTask = restoreDisabledHtmlTaskItem(line);
+      if (restoredTask !== null) {
+        addWarning(
+          warnings,
+          'A disabled HTML checkbox in a Markdown list was restored as an editable task item.'
+        );
+        return restoredTask;
+      }
       if (isRawHtmlBlockLine(line, rawHtmlBlockState)) {
         if (!rawHtmlBlockState.comment &&
             !line.includes('<!--') &&
@@ -1413,7 +1696,9 @@ export function convertFromMarkdown(source, format = 'commonmark', options = {})
       }
       let text = escapeDialectSpecificWmdxSyntax(line, format, commonMarkReferences);
       text = escapeForeignCalloutMarkers(text, format);
-      text = convertInlineHtmlToMarkdown(text, warnings, htmlParser);
+      text = convertInlineHtmlToMarkdown(text, warnings, htmlParser, {
+      preserveUnsupportedHtmlAsRaw: options.preserveUnsupportedHtmlAsRaw === true
+    });
       if (format === 'obsidian') {
         text = convertObsidianLinksToWmdx(text, warnings);
       }
@@ -1469,7 +1754,33 @@ function htmlImageSize(node, warnings) {
 
 function htmlImageResource(node, warnings, titleOverride = '', alignmentOverride = '') {
   const source = node.getAttribute('src');
-  if (!source) return '';
+  if (!source) {
+    const alt = escapeMarkdownField(node.getAttribute('alt') ?? '', {
+      escapeCharacters: '[]'
+    });
+    return `![${alt}]()`;
+  }
+  const hasUnrepresentedHtmlLayout = !titleOverride &&
+    ['width', 'height', 'align'].some(name => node.hasAttribute(name));
+  if (node.hasAttribute('title') || hasUnrepresentedHtmlLayout) {
+    if (node.hasAttribute('title')) {
+      addWarning(
+        warnings,
+        'HTML image tooltip titles have no native Wmdx field; raw image HTML was preserved.'
+      );
+    } else {
+      addWarning(
+        warnings,
+        'HTML image dimensions or alignment were preserved as raw HTML because Wmdx has no matching field.'
+      );
+    }
+    const attributes = ['src', 'alt', 'title', 'width', 'height', 'align']
+      .filter(name => node.hasAttribute(name))
+      .filter(name => !['width', 'height'].includes(name) ||
+        /^\d{1,4}(?:%|px)?$/i.test(node.getAttribute(name).trim()))
+      .map(name => `${name}="${escapeHtml(node.getAttribute(name))}"`);
+    return `<img ${attributes.join(' ')}>`;
+  }
   const displaySource = node.getAttribute('data-wmdx-original-src') || source;
   return formatWmdxResourceSyntax({
     embed: true,
@@ -1513,9 +1824,16 @@ function resourceExtensionFromSource(source) {
     'application/zip': 'zip',
     'text/plain': 'txt'
   };
-  return dataMimeExtensions[dataMimeType] ??
-    String(source ?? '').split(/[?#]/, 1)[0].split('.').at(-1)?.toLowerCase() ??
-    '';
+  if (dataMimeExtensions[dataMimeType]) return dataMimeExtensions[dataMimeType];
+  const withoutQuery = String(source ?? '').split(/[?#]/, 1)[0];
+  let path = withoutQuery;
+  try {
+    path = new URL(withoutQuery).pathname;
+  } catch {
+    // Keep relative resource paths as authored.
+  }
+  const finalSegment = path.replace(/\/+$/, '').split('/').at(-1) ?? '';
+  return finalSegment.split('.').at(-1)?.toLowerCase() ?? '';
 }
 
 function escapeHtml(value) {
@@ -1610,6 +1928,7 @@ function markdownText(value, {
   if (wmdxSyntax) {
     markPaired('^');
     markPaired('=');
+    addMatches(/_{4,}/g);
   }
 
   addMatches(/(&)(?:#\d+|#x[0-9a-f]+|[a-z][a-z0-9]+);/gi, 1);
@@ -1634,13 +1953,25 @@ function markdownText(value, {
   }
   if (escapeBlockSyntax) {
     addMatches(/(^|\n)([ \t]*)(#{1,6})(?=[ \t]|$)/gm, 3);
-    addMatches(/(^|\n)([ \t]*)(\d+|[A-Za-z]+)([.)])(?=[ \t])/gm, 4);
+    const numericListMarker = /(^|\n)([ \t]*)(\d+)([.)])(?=[ \t])/gm;
+    for (const match of source.matchAll(numericListMarker)) {
+      const lineStart = match.index + match[1].length;
+      if (lineStart > 0 && Number(match[3]) !== 1) continue;
+      escapePositions.add(lineStart + match[2].length + match[3].length);
+    }
+    addMatches(/(^|\n)([ \t]*)([A-Za-z]+)([.)])(?=[ \t])/gm, 4);
     addMatches(/(^|\n)([ \t]*)([-+])(?=[ \t]|$)/gm, 3);
     addMatches(/(^|\n)([ \t]*)(>)(?=[ \t]|$)/gm, 3);
     addMatches(/(^|\n)([ \t]*)(\.)([1-6])(?=[ \t])/gm, 3);
     addMatches(/(^|\n)([ \t]*)([-*_])(?:[ \t]*\3){2,}[ \t]*(?=\n|$)/gm, 3);
     addMatches(/(^|\n)([ \t]*)([=-])\3*[ \t]*(?=\n|$)/gm, 3);
     addMatches(/(^|\n)([ \t]*)(\[)(?=[^\]\n]+\]:)/gm, 3);
+  }
+
+  for (const { from, to } of findInlineMathRanges(source)) {
+    for (let index = from; index < to; index += 1) {
+      escapePositions.delete(index);
+    }
   }
 
   const escapablePunctuation = /[!"#$%&'()*+,\-./:;<=>?@[\\\]^_`{|}~]/;
@@ -1793,21 +2124,64 @@ function htmlMediaResource(node) {
   return `[${markdownText(title)}](${markdownLinkDestination(source)} "wmdx-${tag}")`;
 }
 
+const commonMarkRawHtmlFallbackTags = new Set([
+  'div', 'section', 'table', 'del', 'ins', 'i', 'u', 'sup', 'sub', 'mark', 'kbd', 'textarea'
+]);
+const htmlElementsWithNativeImport = new Set([
+  'a', 'audio', 'video', 'details', 'figure', 'nav', 'aside', 'body',
+  'p', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'blockquote', 'ul', 'ol', 'li',
+  'pre', 'code', 'em', 'strong', 'br', 'hr', 'img', 'dl', 'dt', 'dd'
+]);
+
+function shouldPreserveRawHtmlElement(node, options = {}) {
+  if (!options.preserveUnsupportedHtmlAsRaw || node.nodeType !== 1) return false;
+  const tag = node.tagName.toLowerCase();
+  return commonMarkRawHtmlFallbackTags.has(tag) ||
+    (!htmlElementsWithNativeImport.has(tag) &&
+      !commonMarkReferenceHtmlElements.has(tag));
+}
+
+function shouldPreserveRawHtmlLink(node, options = {}) {
+  if (!options.preserveUnsupportedHtmlAsRaw) return false;
+  const href = node.getAttribute('href') ?? '';
+  const label = node.textContent ?? '';
+  return /[\s\\`<>()*]|[^\x00-\x7f]/.test(href) || /[*_~`]/.test(label);
+}
+
 function inlineHtmlNode(node, warnings, options = {}) {
   if (node.nodeType === 3) return markdownText(node.nodeValue, options);
   if (node.nodeType === 8) {
+    if (options.preserveUnsupportedHtmlAsRaw) {
+      const safeComment = String(node.nodeValue ?? '').replace(/--+/g, '- -');
+      return `<!--${safeComment}-->`;
+    }
     addWarning(warnings, 'HTML comments have no native Wmdx equivalent and were omitted.');
     return '';
   }
   if (node.nodeType !== 1) return '';
   const tag = node.tagName.toLowerCase();
+  if (['script', 'style', 'iframe', 'object', 'embed', 'form'].includes(tag)) {
+    addWarning(warnings, `Active HTML element <${tag}> was omitted.`);
+    return '';
+  }
+  if (shouldPreserveRawHtmlElement(node, options) ||
+      (tag === 'a' && shouldPreserveRawHtmlLink(node, options))) {
+    return serializeSafeHtmlBlock(node, warnings);
+  }
   if (tag === 'audio' || tag === 'video') return htmlMediaResource(node);
   if (node.hasAttribute('style') && !isGeneratedTocNode(node)) {
     addWarning(warnings, 'Unmapped inline CSS styling was ignored during HTML import.');
   }
-  if (tag === 'code') return formatMarkdownCodeSpan(node.textContent);
+  if (tag === 'code') {
+    const content = node.textContent ?? '';
+    if (options.tableCell && content.includes('|')) {
+      return formatMarkdownCodeSpan(content).replace(/\|/g, '\\|');
+    }
+    return formatMarkdownCodeSpan(content);
+  }
   const content = Array.from(node.childNodes)
     .map(child => inlineHtmlNode(child, warnings, options)).join('');
+  if (tag === 'kbd') return `<kbd>${content}</kbd>`;
   if (tag === 'strong' || tag === 'b') return `**${content}**`;
   if (tag === 'em' || tag === 'i') return `*${content}*`;
   if (tag === 'del' || tag === 's' || tag === 'strike') return `~~${content}~~`;
@@ -1818,6 +2192,7 @@ function inlineHtmlNode(node, warnings, options = {}) {
   if (tag === 'br') return '  \n';
   if (tag === 'a') {
     const href = node.getAttribute('href');
+    const hasHref = node.hasAttribute('href');
     if (node.getAttribute('data-wmdx-kind') === 'heading-link') {
       const target = node.getAttribute('data-wmdx-target');
       if (target) {
@@ -1837,25 +2212,25 @@ function inlineHtmlNode(node, warnings, options = {}) {
       }
     }
     if (
-      href &&
+      hasHref &&
       node.getAttribute('title') === 'wmdx-attachment'
     ) {
       return `[${content || markdownText(href)}](${markdownLinkDestination(href)} "wmdx-attachment")`;
     }
-    if (node.hasAttribute('title')) {
+    if (node.hasAttribute('title') && !hasHref) {
       addWarning(warnings, 'HTML link tooltip titles have no native Wmdx field and were omitted.');
     }
-    if (href && (node.hasAttribute('download') ||
+    if (hasHref && (node.hasAttribute('download') ||
         node.getAttribute('data-wmdx-kind') === 'attachment')) {
       return `[${content || markdownText(href)}](${markdownLinkDestination(href)} "wmdx-attachment")`;
     }
-    return href
-      ? `[${content || markdownText(href)}](${markdownLinkDestination(href)})`
-      : content;
+    if (!hasHref) return content;
+    const linkTitle = node.hasAttribute('title')
+      ? ` "${escapeMarkdownField(node.getAttribute('title'), { escapeCharacters: '"' })}"`
+      : '';
+    return `[${content || markdownText(href)}](${markdownLinkDestination(href)}${linkTitle})`;
   }
   if (tag === 'img') {
-    const src = node.getAttribute('src');
-    if (!src) return '';
     return htmlImageResource(node, warnings);
   }
   if (tag === 'script' || tag === 'style' || tag === 'iframe' ||
@@ -1866,16 +2241,82 @@ function inlineHtmlNode(node, warnings, options = {}) {
   return content;
 }
 
+function serializeSafeHtmlBlock(node, warnings) {
+  const clone = node.cloneNode(true);
+  const unsafeElements = new Set(['script', 'style', 'iframe', 'object', 'embed', 'form']);
+  const elements = [clone, ...Array.from(clone.querySelectorAll('*'))];
+  for (const element of elements) {
+    const tag = element.tagName.toLowerCase();
+    if (unsafeElements.has(tag)) {
+      addWarning(warnings, `Active HTML element <${tag}> was omitted.`);
+      element.remove();
+      continue;
+    }
+    for (const attribute of Array.from(element.attributes)) {
+      const name = attribute.name.toLowerCase();
+      const value = attribute.value.trim().replace(/[\u0000-\u0020]+/g, '').toLowerCase();
+      const unsafeUrl = ['href', 'src', 'xlink:href', 'formaction'].includes(name) &&
+        /^(?:javascript|vbscript|data):/.test(value);
+      const unsafeStyle = name === 'style' &&
+        /(?:expression\s*\(|url\s*\(\s*['\"]?\s*(?:javascript|vbscript|data):)/i.test(attribute.value);
+      if (name.startsWith('on') || unsafeUrl || unsafeStyle) {
+        addWarning(warnings, 'Unsafe HTML attribute was removed during import.');
+        element.removeAttribute(attribute.name);
+      }
+    }
+  }
+  return clone.outerHTML;
+}
 function htmlBlock(node, warnings, depth = 0, options = {}) {
   if (node.nodeType === 3) return markdownText(node.nodeValue, options);
   if (node.nodeType === 8) {
+    if (options.preserveUnsupportedHtmlAsRaw) {
+      const safeComment = String(node.nodeValue ?? '').replace(/--+/g, '- -');
+      return `<!--${safeComment}-->`;
+    }
     addWarning(warnings, 'HTML comments have no native Wmdx equivalent and were omitted.');
     return '';
   }
   if (node.nodeType !== 1) return '';
   const tag = node.tagName.toLowerCase();
+  if (['script', 'style', 'iframe', 'object', 'embed', 'form'].includes(tag)) {
+    addWarning(warnings, `Active HTML element <${tag}> was omitted.`);
+    return '';
+  }
+  if (shouldPreserveRawHtmlElement(node, options)) {
+    return serializeSafeHtmlBlock(node, warnings);
+  }
   if (node.hasAttribute('style') && !isGeneratedTocNode(node)) {
-    addWarning(warnings, 'Unmapped inline CSS styling was ignored during HTML import.');
+    const style = node.getAttribute('style') ?? '';
+    const textJustifyValue =
+      /(?:^|;)\s*text-justify\s*:\s*(auto|none|inter-word|inter-character)\s*(?:;|$)/i
+        .exec(style)?.[1]?.toLowerCase() ?? '';
+    const canPreserveTextJustify = tag === 'div' &&
+      Boolean(htmlAlignment(node)) &&
+      node.children.length === 0 &&
+      Boolean(textJustifyValue);
+    const styleProperties = style
+      .split(';')
+      .map(declaration => declaration.split(':', 1)[0].trim().toLowerCase())
+      .filter(Boolean);
+    const hasMappedAlignmentContainer =
+      ['div', 'figure'].includes(tag) && Boolean(htmlAlignment(node));
+    const preservedProperties = new Set(
+      hasMappedAlignmentContainer
+        ? ['text-align', ...(canPreserveTextJustify ? ['text-justify'] : [])]
+        : []
+    );
+    const unmappedProperties = hasMappedAlignmentContainer
+      ? styleProperties.filter(property => !preservedProperties.has(property))
+      : styleProperties;
+    if (unmappedProperties.length) {
+      addWarning(
+        warnings,
+        hasMappedAlignmentContainer
+          ? `Additional inline CSS properties on aligned HTML content were not preserved: ${unmappedProperties.join(', ')}.`
+          : `Unmapped inline CSS styling was ignored during HTML import (${unmappedProperties.join(', ')}).`
+      );
+    }
   }
   const children = (childOptions = options) => Array.from(node.childNodes)
     .map(child => htmlBlock(child, warnings, depth + 1, childOptions))
@@ -1883,33 +2324,62 @@ function htmlBlock(node, warnings, depth = 0, options = {}) {
   const inline = (inlineOptions = options) => Array.from(node.childNodes)
     .map(child => inlineHtmlNode(child, warnings, inlineOptions)).join('');
 
+  if (tag === 'nav') {
+    return Array.from(node.childNodes)
+      .map(child => htmlBlock(child, warnings, depth, options))
+      .filter(value => value.trim() !== '')
+      .join('\n\n');
+  }
   if (['script', 'style', 'iframe', 'object', 'embed', 'form'].includes(tag)) {
     addWarning(warnings, `Active HTML element <${tag}> was omitted.`);
     return '';
   }
   if (/^h[1-6]$/.test(tag)) {
     const level = Number(tag[1]);
-    return `.${level} ${inline({ ...options, escapeBlockSyntax: false }).trim()}`;
+    const serialized = inline({ ...options, escapeBlockSyntax: false }).trim();
+    const content = node.querySelector('br')
+      ? serialized
+      : serialized.replace(/[ \t\r\n\f]+/g, ' ');
+    return `.${level} ${content}`;
   }
-  if (tag === 'p') return inline(options).trim();
+  if (tag === 'p') {
+    if (
+      options.preserveUnsupportedHtmlAsRaw &&
+      Array.from(node.querySelectorAll('a')).some(anchor =>
+        shouldPreserveRawHtmlLink(anchor, options)
+      )
+    ) return serializeSafeHtmlBlock(node, warnings);
+    const content = inline(options).trim();
+    if (!content && options.preserveUnsupportedHtmlAsRaw) return '<p></p>';
+    if (/^<img\b[\s\S]*\btitle="[^"]*"[\s\S]*>$/.test(content)) {
+      return `<p>${content}</p>`;
+    }
+    return content;
+  }
   if (tag === 'a') return inlineHtmlNode(node, warnings, options);
   if (tag === 'br') return '  \n';
   if (tag === 'hr') return '---';
   if (tag === 'pre') {
     const code = node.querySelector('code');
     const text = code?.textContent ?? node.textContent ?? '';
-    const language = code?.className.match(/(?:^|\s)language-([\w+-]+)/)?.[1] ?? '';
-    const content = text.replace(/\n+$/, '');
+    const language = code?.className.match(/(?:^|\s)language-([^\s]+)/)?.[1] ?? '';
+    const preserveCodeBlockText = Boolean(options.preserveCodeBlockText);
+    const content = preserveCodeBlockText ? text : text.replace(/\n+$/, '');
     const longestFence = Math.max(2, ...Array.from(content.matchAll(/`+/g), match => match[0].length));
     const fence = '`'.repeat(longestFence + 1);
-    return `${fence}${language}\n${content}\n${fence}`;
+    const codeBody = preserveCodeBlockText
+      ? content === '' || content.endsWith('\n') ? content : `${content}\n`
+      : `${content}\n`;
+    return `${fence}${language}\n${codeBody}${fence}`;
   }
   if (tag === 'blockquote') {
-    return children({ ...options, escapeBlockSyntax: true })
-      .join('\n\n').split('\n').map(line => `> ${line}`).join('\n');
+    const quoteContent = children({ ...options, escapeBlockSyntax: true }).join('\n\n');
+    if (!quoteContent.trim()) return '';
+    return quoteContent.split('\n').map(line => `> ${line}`).join('\n');
   }
   if (tag === 'ul' || tag === 'ol') {
     const ordered = tag === 'ol';
+    const unorderedMarkerState = options.unorderedListMarkerState;
     const htmlType = node.getAttribute('type');
     const orderedStyle = ({
       '1': 'decimal',
@@ -1931,62 +2401,196 @@ function htmlBlock(node, warnings, depth = 0, options = {}) {
       : reversed
         ? node.querySelectorAll(':scope > li').length
         : 1;
-    if (nextOrdinal < 1) {
+    if (nextOrdinal < 0) {
       addWarning(
         warnings,
-        'HTML ordered-list start values below 1 cannot be represented in Wmdx and were normalized.'
+        'Negative HTML ordered-list start values cannot be represented in Wmdx and were normalized.'
       );
       nextOrdinal = 1;
     }
-    return Array.from(node.children).filter(child => child.tagName.toLowerCase() === 'li')
+    let unorderedMarker = '-';
+    if (!ordered && unorderedMarkerState) {
+      const unorderedMarkers = ['-', '*', '+'];
+      unorderedMarkerState.lastByIndent ??= new Map();
+      const markerIndent = options.listIndent ?? 0;
+      const previous = unorderedMarkerState.lastByIndent.get(markerIndent);
+      unorderedMarker = unorderedMarkers.find(value => value !== previous) ?? '-';
+      unorderedMarkerState.lastByIndent.set(markerIndent, unorderedMarker);
+    }
+    const listItems = Array.from(node.children)
+      .filter(child => child.tagName.toLowerCase() === 'li');
+    const looseList = listItems.some(item =>
+      Array.from(item.children).some(child => child.tagName.toLowerCase() === 'p')
+    );
+    return listItems
       .map(item => {
         let itemOrdinal = nextOrdinal;
         if (item.hasAttribute('value')) {
           const explicitValue = Number(item.getAttribute('value'));
           addWarning(warnings, 'Custom ordered-list item values were normalized during HTML import.');
-          if (Number.isFinite(explicitValue) && explicitValue >= 1) {
-            itemOrdinal = explicitValue;
-          }
+          if (Number.isFinite(explicitValue) && explicitValue >= 1) itemOrdinal = explicitValue;
         }
         const checkbox = item.querySelector(
           ':scope > input[type="checkbox"], :scope > p > input[type="checkbox"]'
         );
+        const orderedMarker = itemOrdinal === 0 && orderedStyle === 'decimal'
+          ? '0.'
+          : getOrderedMarkerLabel(orderedStyle, itemOrdinal);
+        const orderedDelimiter = options.orderedListDelimiter === ')' ? ')' : '.';
         const marker = ordered
-          ? getOrderedMarkerLabel(orderedStyle, itemOrdinal)
-          : '-';
+          ? orderedMarker.replace(/[.)]$/, orderedDelimiter)
+          : unorderedMarker;
         const task = checkbox ? `[${checkbox.checked ? 'x' : ' '}] ` : '';
-        const bodyBlocks = Array.from(item.childNodes)
-          .filter(child => !(child.nodeType === 1 &&
-            ['input', 'ul', 'ol'].includes(child.tagName.toLowerCase())))
-          .map(child => htmlBlock(child, warnings, depth + 1, {
+        const itemIndent = ' '.repeat(options.listIndent ?? 0);
+        const continuationIndent = ' '.repeat(
+          itemIndent.length + marker.length + 1
+        );
+        const bodyBlocks = [];
+        let inlineBody = '';
+        let inlineBodyType = 'inline';
+        let hasBlockContent = false;
+        let inlineNodes = [];
+        const appendBlock = (value, type = 'block') => {
+          if (!value?.trim()) return;
+          bodyBlocks.push({ value, type });
+          hasBlockContent = true;
+        };
+        const flushInlineNodes = () => {
+          if (!inlineNodes.length) return;
+          const value = inlineNodes
+            .map(child => inlineHtmlNode(child, warnings, {
+              ...options,
+              escapeBlockSyntax: true
+            }))
+            .join('')
+            .trim();
+          inlineNodes = [];
+          if (!value) return;
+          if (!hasBlockContent && !inlineBody) {
+            inlineBody = value;
+            inlineBodyType = 'inline';
+          } else {
+            appendBlock(value, looseList ? 'paragraph' : 'inline');
+          }
+        };
+        for (const child of Array.from(item.childNodes)) {
+          const childTag = child.nodeType === 1 ? child.tagName.toLowerCase() : '';
+          if (childTag === 'input') continue;
+          if (childTag === 'ul' || childTag === 'ol') {
+            flushInlineNodes();
+            const value = htmlBlock(child, warnings, depth + 1, {
+              ...options,
+              escapeBlockSyntax: true,
+              listIndent: continuationIndent.length
+            });
+            const relative = value.split('\n')
+              .map(line => line.startsWith(continuationIndent)
+                ? line.slice(continuationIndent.length)
+                : line)
+              .join('\n');
+            appendBlock(relative, 'list');
+            continue;
+          }
+          if (childTag === 'p' && !child.hasAttribute('style') && !child.hasAttribute('align')) {
+            flushInlineNodes();
+            const value = Array.from(child.childNodes)
+              .map(grandchild => inlineHtmlNode(grandchild, warnings, {
+                ...options,
+                escapeBlockSyntax: true
+              }))
+              .join('')
+              .trim();
+            if (value) {
+              if (!hasBlockContent && !inlineBody) {
+                inlineBody = value;
+                inlineBodyType = 'paragraph';
+              } else {
+                appendBlock(value, 'paragraph');
+              }
+            }
+            continue;
+          }
+          const isBlock = childTag && RAW_HTML_BLOCK_TAGS.has(childTag);
+          if (!isBlock) {
+            inlineNodes.push(child);
+            continue;
+          }
+          flushInlineNodes();
+          const value = htmlBlock(child, warnings, depth + 1, {
             ...options,
             escapeBlockSyntax: true
-          }))
-          .filter(value => value.trim() !== '');
-        const nested = Array.from(item.children)
-          .filter(child => ['ul', 'ol'].includes(child.tagName.toLowerCase()))
-          .map(child => htmlBlock(child, warnings, depth + 1, {
-            ...options,
-            escapeBlockSyntax: true
-          }))
-          .filter(Boolean)
-          .join('\n');
-        const itemIndent = '  '.repeat(depth);
-        const continuationIndent = '  '.repeat(depth + 1);
-        const body = bodyBlocks.shift() || '';
-        const prefix = `${itemIndent}${marker} ${task}${body}`;
-        const continuation = bodyBlocks.map(block => block.split('\n')
-          .map(line => `${continuationIndent}${line}`)
-          .join('\n')).join('\n\n');
-        const output = `${prefix}${continuation ? `\n\n${continuation}` : ''}` +
-          `${nested ? `\n${nested}` : ''}`;
+          });
+          const type = /^h[1-6]$/.test(childTag) ? 'heading' : 'block';
+          appendBlock(value, type);
+        }
+        flushInlineNodes();
+        const itemContent = task + inlineBody;
+        const prefix = `${itemIndent}${marker}${itemContent ? ` ${itemContent}` : ''}`;
+        const continuationBlocks = bodyBlocks.map(block => ({
+          ...block,
+          value: block.value.split('\n')
+            .map(line => `${continuationIndent}${line}`)
+            .join('\n')
+        }));
+        let looseSpacingAppliedInItem = false;
+        const blockSeparator = (previousType, nextType) => {
+          if (previousType === 'paragraph' && nextType === 'list') {
+            const shouldSeparate = looseList && listItems.length === 1 &&
+              !looseSpacingAppliedInItem;
+            if (shouldSeparate) looseSpacingAppliedInItem = true;
+            return shouldSeparate ? '\n\n' : '\n';
+          }
+          if (previousType === 'paragraph' && nextType === 'paragraph') {
+            looseSpacingAppliedInItem = true;
+            return '\n\n';
+          }
+          if (previousType === 'list' && nextType === 'paragraph') {
+            looseSpacingAppliedInItem = true;
+            return '\n\n';
+          }
+          if (previousType === 'paragraph' || nextType === 'paragraph') {
+            looseSpacingAppliedInItem = true;
+            return '\n\n';
+          }
+          if (previousType === 'list' && nextType === 'list') return '\n\n';
+          return '\n';
+        };
+        const inlineBlockSeparator = inlineBody && continuationBlocks.length
+          ? blockSeparator(inlineBodyType, continuationBlocks[0].type)
+          : '\n';
+        let continuation = '';
+        for (let index = 0; index < continuationBlocks.length; index += 1) {
+          const block = continuationBlocks[index];
+          if (index > 0) {
+            continuation += blockSeparator(continuationBlocks[index - 1].type, block.type);
+          }
+          continuation += block.value;
+        }
+        const output = prefix +
+          (continuation ? inlineBlockSeparator + continuation : '');
         nextOrdinal = itemOrdinal + 1;
         return output;
-      }).join('\n');
+      })
+      .join(looseList ? '\n\n' : '\n');
   }
   if (tag === 'table') {
     const rowNodes = Array.from(node.querySelectorAll('tr'))
       .filter(row => row.closest('table') === node);
+    const firstRowCells = Array.from(rowNodes[0]?.children ?? []).filter(cell =>
+      ['th', 'td'].includes(cell.tagName.toLowerCase())
+    );
+    const hasHeaderCells = firstRowCells.some(cell =>
+      cell.tagName.toLowerCase() === 'th'
+    );
+    const hasBlockCellContent = rowNodes.some(row =>
+      Array.from(row.children).some(cell =>
+        ['th', 'td'].includes(cell.tagName.toLowerCase()) &&
+        cell.querySelector('p, pre, blockquote, ul, ol, table, div, section, hr')
+      )
+    );
+    if (
+      options.preserveUnsupportedHtmlAsRaw
+    ) return serializeSafeHtmlBlock(node, warnings);
     if (!rowNodes.length) return '';
     const normalized = rowNodes.map(() => []);
     rowNodes.forEach((row, rowIndex) => {
@@ -2089,24 +2693,34 @@ function htmlBlock(node, warnings, depth = 0, options = {}) {
   }
   if (tag === 'details') {
     const summary = node.querySelector(':scope > summary');
-    const title = summary?.textContent?.trim() || 'Details';
+    const title = summary
+      ? Array.from(summary.childNodes)
+        .map(child => inlineHtmlNode(child, warnings, options)).join('').trim()
+      : '';
+    const summaryTitle = title || 'Details';
     const body = Array.from(node.childNodes)
       .filter(child => child !== summary)
       .map(child => htmlBlock(child, warnings, depth + 1, options))
       .filter(value => value.trim())
       .join('\n\n');
     const marker = node.hasAttribute('open') ? '+' : '-';
-    return `±dropdown${marker} ${markdownText(title, {
-      ...options,
-      escapeBlockSyntax: false
-    })}\n${body.split('\n')
+    return `±dropdown${marker} ${summaryTitle}\n${body.split('\n')
       .map(line => line ? `  ${line}` : '').join('\n')}`;
   }
   if (tag === 'figure') {
     const image = node.querySelector('img');
     const caption = node.querySelector('figcaption')?.textContent?.trim();
     if (image) {
-      return htmlImageResource(image, warnings, caption, htmlAlignment(node));
+      const resource = htmlImageResource(image, warnings, caption, htmlAlignment(node));
+      if (/^<img\b/i.test(resource)) {
+        const alignment = htmlAlignment(node);
+        const style = alignment ? ` style="text-align: ${alignment};"` : '';
+        const safeCaption = caption
+          ? `<figcaption>${escapeHtml(caption)}</figcaption>`
+          : '';
+        return `<figure${style}>${resource}${safeCaption}</figure>`;
+      }
+      return resource;
     }
   }
   if (tag === 'audio' || tag === 'video') {
@@ -2119,7 +2733,25 @@ function htmlBlock(node, warnings, depth = 0, options = {}) {
     const marker = {
       left: '<', center: '><', right: '>', justify: '<>'
     }[alignment];
-    if (marker) return `${marker}\n${children().join('\n\n')}`;
+    if (marker) {
+      const textJustifyValue =
+        /(?:^|;)\s*text-justify\s*:\s*(auto|none|inter-word|inter-character)\s*(?:;|$)/i
+          .exec(node.getAttribute('style') ?? '')?.[1]?.toLowerCase();
+      if (textJustifyValue && node.children.length === 0) {
+        return `<div style="text-align: ${alignment}; text-justify: ${textJustifyValue};">` +
+          `${escapeHtml(node.textContent ?? '')}</div>`;
+      }
+      const blockChildTags = new Set([
+        'blockquote', 'div', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
+        'hr', 'ol', 'p', 'pre', 'table', 'ul'
+      ]);
+      const hasBlockChildren = Array.from(node.children)
+        .some(child => blockChildTags.has(child.tagName.toLowerCase()));
+      const content = hasBlockChildren
+        ? children().join('\n\n')
+        : inline();
+      return `${marker}\n${content}`;
+    }
   }
   if (tag === 'a' && node.hasAttribute('id')) {
     const id = node.getAttribute('id')?.trim();
@@ -2138,7 +2770,11 @@ function htmlBlock(node, warnings, depth = 0, options = {}) {
     }).filter(Boolean).join('\n');
   }
   if (tag === 'li') return children().join(' ');
-  return children().join(tag === 'div' || tag === 'section' ? '\n\n' : '');
+  if (
+    options.preserveRawHtmlContainers &&
+    (tag === 'div' || tag === 'section')
+  ) return serializeSafeHtmlBlock(node, warnings);
+  return children().join('');
 }
 
 function resolveEmbeddedHtmlResources(
@@ -2243,13 +2879,450 @@ function extractWmdxHtmlFootnotes(document, warnings) {
   return { definitions, restored: true };
 }
 
+const commonMarkReferenceHtmlElements = new Set([
+  'p', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'blockquote',
+  'ul', 'ol', 'li', 'pre', 'code', 'em', 'strong', 'del',
+  'a', 'img', 'br', 'hr'
+]);
+const commonMarkReferenceHtmlAttributes = Object.freeze({
+  a: new Set(['href', 'title']),
+  img: new Set(['src', 'alt', 'title']),
+  code: new Set(['class']),
+  ol: new Set(['start'])
+});
+
+function isCommonMarkReferenceHtml(body) {
+  if (body.querySelector('img[src^="data:"], audio[src^="data:"], video[src^="data:"], source[src^="data:"], a[title="wmdx-attachment"]')) {
+    return false;
+  }
+  const comments = body.ownerDocument.createTreeWalker(body, 128);
+  if (comments.nextNode()) return false;
+  for (const node of body.querySelectorAll('*')) {
+    const tag = node.tagName.toLowerCase();
+    if (!commonMarkReferenceHtmlElements.has(tag)) return false;
+    const allowedAttributes = commonMarkReferenceHtmlAttributes[tag] ?? new Set();
+    for (const attribute of Array.from(node.attributes)) {
+      const name = attribute.name.toLowerCase();
+      if (!allowedAttributes.has(name)) return false;
+      if (tag === 'ol' && name === 'start' && !/^\d+$/.test(attribute.value)) {
+        return false;
+      }
+    }
+  }
+  return true;
+}
+
+function importCommonMarkReferenceHtml(
+  body, Parser, warnings, footnoteDefinitions, preserveRawHtmlContainers = false,
+  preserveUnsupportedHtmlAsRaw = false
+) {
+  const unorderedListMarkerState = { lastByIndent: new Map() };
+  const orderedListDelimiters = new WeakMap();
+  const blockOptions = {
+    unorderedListMarkerState,
+    preserveCodeBlockText: true,
+    preserveRawHtmlContainers,
+    preserveUnsupportedHtmlAsRaw
+  };
+  const leadingNbspMarkers = new Map();
+  const leadingTabMarkers = new Map();
+  const literalBlockStartMarkers = new Map();
+  const inlineCodeMarkers = new Map();
+  let softBreakMarker = String.fromCharCode(0xE002) + 'WMDX_SOFT_BREAK' + String.fromCharCode(0xE003);
+  while (body.textContent?.includes(softBreakMarker)) softBreakMarker += String.fromCharCode(0xE105);
+  const leadingNbspCharacter = String.fromCharCode(0x00A0);
+  const blockStartTags = new Set([
+    'blockquote', 'body', 'div', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'li', 'p', 'td', 'th'
+  ]);
+  const structuralBlockTags = new Set([
+    'blockquote', 'body', 'dd', 'details', 'div', 'dl', 'dt', 'fieldset',
+    'figcaption', 'figure', 'footer', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
+    'header', 'hr', 'li', 'main', 'nav', 'ol', 'p', 'pre', 'section',
+    'table', 'tbody', 'td', 'tfoot', 'th', 'thead', 'tr', 'ul'
+  ]);
+  const hasAdjacentStructuralBlock = (textNode, direction) => {
+    let current = textNode;
+    while (current && current !== body) {
+      let sibling = direction === 'previous' ? current.previousSibling : current.nextSibling;
+      while (sibling && (sibling.nodeType === 8 ||
+          (sibling.nodeType === 3 && !sibling.nodeValue.trim()))) {
+        sibling = direction === 'previous' ? sibling.previousSibling : sibling.nextSibling;
+      }
+      if (sibling) {
+        return sibling.nodeType === 1 &&
+          structuralBlockTags.has(sibling.tagName.toLowerCase());
+      }
+      current = current.parentNode;
+    }
+    return false;
+  };
+  const isBlockStartTextNode = textNode => {
+    if (!textNode.nodeValue?.startsWith(leadingNbspCharacter) &&
+        !textNode.nodeValue?.startsWith('\t')) return false;
+    let current = textNode;
+    let parent = current.parentNode;
+    while (parent && parent !== body.ownerDocument) {
+      let sibling = current.previousSibling;
+      while (sibling) {
+        if (sibling.nodeType === 8 ||
+            (sibling.nodeType === 3 && !sibling.nodeValue.trim())) {
+          sibling = sibling.previousSibling;
+          continue;
+        }
+        return false;
+      }
+      if (parent.nodeType === 1 && blockStartTags.has(parent.tagName.toLowerCase())) return true;
+      current = parent;
+      parent = parent.parentNode;
+    }
+    return false;
+  };
+  const literalBacktickMarkers = new Map();
+  let literalBacktickIndex = 0;
+  const protectAdjacentLiteralBackticks = textNode => {
+    if (textNode?.nodeType !== 3 || !textNode.nodeValue?.includes('`')) return;
+    textNode.nodeValue = textNode.nodeValue.replace(/`/g, () => {
+      let marker = String.fromCharCode(0xE106) +
+        'WMDX_LITERAL_BACKTICK_' + (++literalBacktickIndex) +
+        String.fromCharCode(0xE107);
+      while (body.textContent?.includes(marker)) marker += String.fromCharCode(0xE108);
+      literalBacktickMarkers.set(marker, String.fromCharCode(92) + '`');
+      return marker;
+    });
+  };
+  let blockStartMarkerIndex = 0;
+  const protectBlockStartsAfterBreak = value => value.replace(
+    /(\r?\n)( {0,3})(?=(?:#{1,6}(?:[ \t]|$)|>(?:[ \t]|$)|[-+*](?:[ \t]|$)|\[[^\]\n]+\]:|[-*_]{3,}[ \t]*$|={1,}[ \t]*$))/gm,
+    (_, newline, indent) => {
+      let marker = String.fromCharCode(0xE10B) +
+        'WMDX_LITERAL_BLOCK_START_' + (++blockStartMarkerIndex) +
+        String.fromCharCode(0xE10C);
+      while (body.textContent?.includes(marker) || literalBlockStartMarkers.has(marker)) {
+        marker += String.fromCharCode(0xE10D);
+      }
+      literalBlockStartMarkers.set(marker, String.fromCharCode(92));
+      return newline + indent + marker;
+    }
+  );
+  let inlineCodeIndex = 0;
+  for (const code of Array.from(body.querySelectorAll('code'))) {
+    if (code.closest('pre')) continue;
+    protectAdjacentLiteralBackticks(code.previousSibling);
+    protectAdjacentLiteralBackticks(code.nextSibling);
+    let marker = String.fromCharCode(0xE102) + 'WMDX_INLINE_CODE_' + (++inlineCodeIndex) + String.fromCharCode(0xE103);
+    while (body.textContent?.includes(marker)) marker += String.fromCharCode(0xE104);
+    inlineCodeMarkers.set(marker, formatMarkdownCodeSpan(code.textContent ?? ''));
+    code.replaceWith(body.ownerDocument.createTextNode(marker));
+  }
+  for (const anchor of Array.from(body.querySelectorAll('a'))) {
+    protectAdjacentLiteralBackticks(anchor.previousSibling);
+    protectAdjacentLiteralBackticks(anchor.nextSibling);
+    const anchorWalker = body.ownerDocument.createTreeWalker(anchor, 4);
+    let anchorText = anchorWalker.nextNode();
+    while (anchorText) {
+      protectAdjacentLiteralBackticks(anchorText);
+      anchorText = anchorWalker.nextNode();
+    }
+  }
+  for (const lineBreak of body.querySelectorAll('br')) {
+    const next = lineBreak.nextSibling;
+    if (next?.nodeType === 3) {
+      next.nodeValue = next.nodeValue.replace(/^[ \t]*\r?\n[ \t]*/, ' ');
+    }
+  }
+  for (const heading of body.querySelectorAll('h1, h2, h3, h4, h5, h6')) {
+    const headingWalker = body.ownerDocument.createTreeWalker(heading, 4);
+    let headingText = headingWalker.nextNode();
+    while (headingText) {
+      if (!headingText.parentElement?.closest('code')) {
+        headingText.nodeValue = headingText.nodeValue.replace(/[ \t]*\r?\n[ \t]*/g, ' ');
+      }
+      headingText = headingWalker.nextNode();
+    }
+  }
+  const textWalker = body.ownerDocument.createTreeWalker(body, 4);
+  let textNode = textWalker.nextNode();
+  let markerIndex = 0;
+  while (textNode) {
+    if (!textNode.parentElement?.closest('pre, code')) {
+      if (isBlockStartTextNode(textNode)) {
+        const leadingTabs = /^\t+/.exec(textNode.nodeValue)?.[0] ?? '';
+        if (leadingTabs) {
+          const tabMarker = String.fromCharCode(0xE109) +
+            'WMDX_LEADING_TAB_' + (++markerIndex) + String.fromCharCode(0xE10A);
+          leadingTabMarkers.set(tabMarker, '&#9;'.repeat(leadingTabs.length));
+          textNode.nodeValue = tabMarker + textNode.nodeValue.slice(leadingTabs.length);
+        }
+        const leading = new RegExp('^' + leadingNbspCharacter + '+').exec(textNode.nodeValue)?.[0] ?? '';
+        if (leading) {
+          const marker = String.fromCharCode(0xE100) + 'WMDX_NBSP_' + (++markerIndex) + String.fromCharCode(0xE101);
+          leadingNbspMarkers.set(marker, '&nbsp;'.repeat(leading.length));
+          textNode.nodeValue = marker + textNode.nodeValue.slice(leading.length);
+        }
+      }
+      if (/\S/.test(textNode.nodeValue)) {
+        let value = textNode.nodeValue;
+        if (hasAdjacentStructuralBlock(textNode, 'previous')) {
+          value = value.replace(/^[ \t]*(?:\r?\n)+[ \t]*/, '');
+        }
+        if (hasAdjacentStructuralBlock(textNode, 'next')) {
+          value = value.replace(/[ \t]*(?:\r?\n)+[ \t]*$/, '');
+        }
+        value = value.replace(/[ \t]*\r?\n(?:[ \t]*\r?\n)+[ \t]*/g, ' ');
+        const insideBlockquote = Boolean(textNode.parentElement?.closest('blockquote'));
+        if (!insideBlockquote) value = protectBlockStartsAfterBreak(value);
+        textNode.nodeValue = insideBlockquote
+          ? value
+          : value.replace(/\r?\n/g, softBreakMarker);
+      }
+    }
+    textNode = textWalker.nextNode();
+  }
+  const converter = new TurndownService({
+    headingStyle: 'atx',
+    codeBlockStyle: 'fenced',
+    bulletListMarker: '-',
+    emDelimiter: '*',
+    strongDelimiter: '**',
+    hr: '---',
+    blankReplacement: (_, node) => {
+      if (node.nodeType !== 1) return '\n\n';
+      const tag = node.tagName.toLowerCase();
+      if (!node.textContent.trim() && !node.querySelector('*')) {
+        if (tag === 'blockquote') return '\n\n>\n\n';
+        if (/^h[1-6]$/.test(tag)) return '\n\n' + '#'.repeat(Number(tag[1])) + ' \n\n';
+      }
+      const preserveBlankNode = tag === 'pre' ||
+        tag === 'ul' || tag === 'ol' ||
+        (tag === 'blockquote' && node.querySelector('pre, ul, ol, hr, table')) ||
+        (tag === 'p' && node.querySelector('a[href], img[src], code')) ||
+        (tag === 'a' && node.hasAttribute('href'));
+      if (!preserveBlankNode) return '\n\n';
+      const markdown = htmlBlock(node, warnings, 0, blockOptions);
+      return markdown ? '\n\n' + markdown + '\n\n' : '\n\n';
+    }
+  });
+  converter.escape = value => {
+    const input = String(value ?? '');
+    const hasSoftBreak = input.includes(softBreakMarker);
+    const source = input.split(softBreakMarker).join('\n');
+    const escaped = markdownText(source, {
+      escapeBlockSyntax: true,
+      wmdxSyntax: true
+    });
+    const escapeBlockStart = line => {
+      const leading = /^ {0,3}/.exec(line)?.[0] ?? '';
+      const rest = line.slice(leading.length);
+      let position = null;
+      if (/^(?:#{1,6}(?:[ \t]|$)|>(?:[ \t]|$)|[-+*](?:[ \t]|$)|\[[^\]\n]+\]:|[-*_]{3,}[ \t]*$|={1,}[ \t]*$)/.test(rest)) {
+        position = leading.length;
+      } else {
+        const ordered = /^\d{1,9}[.)](?=[ \t])/.exec(rest);
+        if (ordered) position = leading.length + ordered[0].length - 1;
+      }
+      if (position === null) return line;
+      const backslash = String.fromCharCode(92);
+      let backslashRun = 0;
+      for (let index = position - 1; index >= 0 && line[index] === backslash; index -= 1) backslashRun += 1;
+      return backslashRun % 2 === 1
+        ? line
+        : line.slice(0, position) + backslash + line.slice(position);
+    };
+    const serializedLines = escaped.split('\n').map(escapeBlockStart);
+    return serializedLines.join(hasSoftBreak ? softBreakMarker : '\n');
+  };
+  const safeEmphasisContent = (content, node) => {
+    if (node.querySelector('strong, b, em, i, a, code')) return content;
+    const backslash = String.fromCharCode(92);
+    let safeContent = '';
+    let backslashRun = 0;
+    for (const character of content) {
+      if (character === '*' && backslashRun % 2 === 0) safeContent += backslash;
+      safeContent += character;
+      backslashRun = character === backslash ? backslashRun + 1 : 0;
+    }
+    return safeContent;
+  };
+  converter.addRule('commonMarkEmphasis', {
+    filter: ['em', 'i'],
+    replacement: (content, node) => {
+      let nestingDepth = 0;
+      let ancestor = node.parentElement;
+      while (ancestor && ancestor !== body) {
+        if (['EM', 'I'].includes(ancestor.nodeName)) nestingDepth += 1;
+        ancestor = ancestor.parentElement;
+      }
+      const delimiter = nestingDepth % 2 === 0 ? '*' : '_';
+      return delimiter + safeEmphasisContent(content, node) + delimiter;
+    }
+  });
+  converter.addRule('commonMarkStrong', {
+    filter: ['strong', 'b'],
+    replacement: (content, node) => '**' + safeEmphasisContent(content, node) + '**'
+  });
+  converter.addRule('commonMarkLink', {
+    filter: node => node.nodeName === 'A',
+    replacement: (content, node) => {
+      if (!node.hasAttribute('href')) return content;
+      let safeLabel = content;
+      if (!node.querySelector('img')) {
+        safeLabel = '';
+        let backslashRun = 0;
+        const backslash = String.fromCharCode(92);
+        for (const character of content) {
+          if (character === '[' || character === ']') {
+            if (backslashRun % 2 === 0) safeLabel += backslash;
+            safeLabel += character;
+            backslashRun = 0;
+            continue;
+          }
+          safeLabel += character;
+          backslashRun = character === backslash ? backslashRun + 1 : 0;
+        }
+      }
+      const href = node.getAttribute('href') ?? '';
+      const title = node.hasAttribute('title')
+        ? ' ' + String.fromCharCode(34) + escapeMarkdownField(node.getAttribute('title'), { escapeCharacters: String.fromCharCode(34) }) + String.fromCharCode(34)
+        : '';
+      return '[' + safeLabel + '](' + markdownLinkDestination(href) + title + ')';
+    }
+  });
+  let literalBangMarker = String.fromCharCode(0xE000) + 'WMDX_LITERAL_BANG' + String.fromCharCode(0xE001);
+  while (body.textContent?.includes(literalBangMarker)) {
+    literalBangMarker += String.fromCharCode(0xE001);
+  }
+  for (const link of Array.from(body.querySelectorAll('a'))) {
+    const previous = link.previousSibling;
+    if (previous?.nodeType !== 3 || !previous.nodeValue?.endsWith('!')) continue;
+    previous.nodeValue = previous.nodeValue.slice(0, -1) + literalBangMarker;
+  }
+  converter.addRule('commonMarkHeading', {
+    filter: node => /^H[1-6]$/.test(node.nodeName),
+    replacement: (content, node) => {
+      const level = Number(node.nodeName[1]);
+      const normalizedContent = content.replace(/\s+/g, ' ').trim();
+      if (!normalizedContent) return '\n\n' + '#'.repeat(level) + ' \n\n';
+      const safeContent = normalizedContent.replace(/(^|\s)(#{1,6})[ \t]*$/g, (_, prefix, hashes) => prefix + String.fromCharCode(92) + hashes);
+      return '\n\n' + '#'.repeat(level) + ' ' + safeContent + '\n\n';
+    }
+  });
+  converter.addRule('emptyImageDestination', {
+    filter: node => node.nodeName === 'IMG' && node.getAttribute('src') === '',
+    replacement: (_, node) => '!' + '[' + markdownText(node.getAttribute('alt') ?? '', {
+      escapeBlockSyntax: false,
+      wmdxSyntax: true
+    }) + ']()'
+  });
+  converter.addRule('emptyLinkDestination', {
+    filter: node => node.nodeName === 'A' && node.getAttribute('href') === '',
+    replacement: content => '[' + content + ']()'
+  });
+  converter.addRule('commonMarkCodeBlock', {
+    filter: 'pre',
+    replacement: (_, node) => '\n\n' + htmlBlock(node, warnings, 0, blockOptions) + '\n\n'
+  });
+  converter.addRule('commonMarkBlockquote', {
+    filter: 'blockquote',
+    replacement: (_, node) => {
+      const markdown = htmlBlock(node, warnings, 0, blockOptions);
+      return markdown.trim()
+        ? '\n\n' + markdown + '\n\n'
+        : '\n\n>\n\n';
+    }
+  });
+  converter.addRule('commonMarkList', {
+    filter: ['ul', 'ol'],
+    replacement: (_, node) => {
+      let orderedListDelimiter = '.';
+      if (node.nodeName === 'OL') {
+        let previous = node.previousSibling;
+        while (previous && (previous.nodeType === 8 ||
+          (previous.nodeType === 3 && !previous.nodeValue.trim()))) {
+          previous = previous.previousSibling;
+        }
+        const currentStart = node.hasAttribute('start') &&
+          Number.isFinite(Number(node.getAttribute('start')))
+          ? Number(node.getAttribute('start'))
+          : 1;
+        const currentCount = Array.from(node.children).filter(child => child.nodeName === 'LI').length;
+        if (previous?.nodeType === 1 && previous.nodeName === 'OL') {
+          const previousStart = previous.hasAttribute('start') &&
+            Number.isFinite(Number(previous.getAttribute('start')))
+            ? Number(previous.getAttribute('start'))
+            : 1;
+          const previousCount = Array.from(previous.children).filter(child => child.nodeName === 'LI').length;
+          const state = orderedListDelimiters.get(node.parentNode);
+          if (state?.node === previous && currentStart === previousStart + previousCount) {
+            orderedListDelimiter = state.delimiter === '.' ? ')' : '.';
+          }
+        }
+        orderedListDelimiters.set(node.parentNode, {
+          node,
+          delimiter: orderedListDelimiter,
+          end: currentStart + currentCount - 1
+        });
+      }
+      const markdown = htmlBlock(node, warnings, 0, {
+        ...blockOptions,
+        orderedListDelimiter
+      });
+      return '\n\n' + markdown + '\n\n';
+    }
+  });
+  let markdownSource = converter.turndown(body);
+  markdownSource = markdownSource.split(literalBangMarker).join('\\!');
+  for (const [marker, replacement] of literalBacktickMarkers) {
+    markdownSource = markdownSource.split(marker).join(replacement);
+  }
+  for (const [marker, replacement] of leadingTabMarkers) {
+    markdownSource = markdownSource.split(marker).join(replacement);
+  }
+  for (const [marker, replacement] of inlineCodeMarkers) {
+    markdownSource = markdownSource.split(marker).join(replacement);
+  }
+  for (const [marker, replacement] of leadingNbspMarkers) {
+    markdownSource = markdownSource.split(marker).join(replacement);
+  }
+  for (const [marker, replacement] of literalBlockStartMarkers) {
+    markdownSource = markdownSource.split(marker).join(replacement);
+  }
+  // Ordered markers other than 1 cannot interrupt a paragraph after a soft break,
+  // so escape their delimiter only when they occur at a true block start.
+  const softBreakParts = markdownSource.split(softBreakMarker);
+  markdownSource = softBreakParts.map((part, index) => {
+    if (index === 0) return part;
+    return part.replace(/^([ \t]{0,3})(\d{1,9})\\([.)])(?=[ \t])/, (whole, indent, digits, delimiter) =>
+      Number(digits) === 1 ? whole : `${indent}${digits}${delimiter}`
+    );
+  }).join(softBreakMarker);
+  markdownSource = markdownSource.split(softBreakMarker).join('\n');
+  markdownSource = protectCodeFences(markdownSource, (lines, protectedLines) =>
+    lines.map((line, index) => !protectedLines.has(index) && line.startsWith(leadingNbspCharacter)
+      ? '&nbsp;' + line.slice(1)
+      : line)
+  );
+  const imported = convertFromMarkdown(markdownSource, 'commonmark', {
+    DOMParser: Parser,
+    preserveRawHtmlContainers,
+    preserveUnsupportedHtmlAsRaw
+  });
+  const markdown = [imported.markdown, ...footnoteDefinitions]
+    .filter(Boolean)
+    .join('\n\n');
+  if (!markdown && body.textContent?.trim()) {
+    throw new Error('No readable document content could be converted from this HTML.');
+  }
+  return { markdown, warnings: [...warnings, ...imported.warnings] };
+}
 export function convertFromHtml(
   source,
   Parser = globalThis.DOMParser,
   {
     embeddedResources = null,
     baseLocation = '',
-    resolveEmbeddedResource = null
+    resolveEmbeddedResource = null,
+    preserveRawHtmlContainers = true,
+    preserveUnsupportedHtmlAsRaw = false
   } = {}
 ) {
   if (typeof Parser !== 'function') {
@@ -2265,10 +3338,54 @@ export function convertFromHtml(
     warnings,
     resolveEmbeddedResource
   );
+  const commentWalker = document.createTreeWalker(document.body, 128);
+  const hasHtmlComments = Boolean(commentWalker.nextNode());
   const footnotes = extractWmdxHtmlFootnotes(document, warnings);
   const body = document.body;
-  const mainMarkdown = Array.from(body.childNodes)
-    .map(node => htmlBlock(node, warnings))
+  if (hasHtmlComments && !preserveUnsupportedHtmlAsRaw && !warnings.some(warning => warning.includes('HTML comments'))) {
+    addWarning(warnings, 'HTML comments have no native Wmdx equivalent and were omitted.');
+  }
+  const hasEmbeddedResources = embeddedResources && Object.keys(embeddedResources).length > 0;
+  if (!hasEmbeddedResources && isCommonMarkReferenceHtml(body)) {
+    return importCommonMarkReferenceHtml(
+      body, Parser, warnings, footnotes.definitions, preserveRawHtmlContainers,
+      preserveUnsupportedHtmlAsRaw
+    );
+  }
+  const unorderedListMarkerState = { lastByIndent: new Map() };
+  const bodyNodes = Array.from(body.childNodes);
+  const convertedBlocks = [];
+  for (let index = 0; index < bodyNodes.length; index += 1) {
+    const node = bodyNodes[index];
+    if (
+      preserveRawHtmlContainers &&
+      node.nodeType === 1 &&
+      ['div', 'section'].includes(node.tagName.toLowerCase())
+    ) {
+      let rawBlock = serializeSafeHtmlBlock(node, warnings);
+      let nextIndex = index + 1;
+      let appendedRawText = false;
+      while (
+        bodyNodes[nextIndex]?.nodeType === 3 &&
+        !/\n[ \t]*\n/.test(bodyNodes[nextIndex].nodeValue ?? '')
+      ) {
+        rawBlock += escapeHtml(bodyNodes[nextIndex].nodeValue ?? '');
+        nextIndex += 1;
+        appendedRawText = true;
+      }
+      if (appendedRawText) {
+        convertedBlocks.push(rawBlock);
+        index = nextIndex - 1;
+        continue;
+      }
+    }
+    convertedBlocks.push(htmlBlock(node, warnings, 0, {
+      unorderedListMarkerState,
+      preserveRawHtmlContainers,
+      preserveUnsupportedHtmlAsRaw
+    }));
+  }
+  const mainMarkdown = convertedBlocks
     .filter(Boolean)
     .join('\n\n')
     .replace(/\n{3,}/g, '\n\n')
@@ -2341,6 +3458,22 @@ function convertWmdxResourceToMarkdown(raw, dialect, warnings) {
     'avif', 'bmp', 'gif', 'jpe', 'jpeg', 'jpg', 'png', 'svg', 'webp'
   ]);
   const hasSize = Boolean(size?.unit);
+  if (
+    imageExtensions.has(extension) &&
+    !alignment &&
+    !hasSize &&
+    (
+      dialect === 'commonmark' ||
+      dialect === 'gfm' ||
+      (dialect === 'obsidian' && /^[a-z][a-z\d+.-]*:/i.test(source))
+    )
+  ) {
+    const alt = escapeMarkdownField(
+      title || getWmdxResourceFallbackTitle(source),
+      { escapeCharacters: '[]' }
+    );
+    return `![${alt}](${encodeMarkdownDestination(source)})`;
+  }
   const audioExtensions = new Set([
     'aac', 'flac', 'm4a', 'mp3', 'oga', 'ogg', 'opus', 'wav'
   ]);
@@ -2377,6 +3510,7 @@ function convertWmdxResourceToMarkdown(raw, dialect, warnings) {
 
 function convertWmdxCallouts(lines, dialect, warnings, protectedLines) {
   const output = [...lines];
+  const detailsIndexes = [];
   const openerPattern = /^([ \t]*)±([A-Za-z](?:[A-Za-z0-9_-]*[A-Za-z0-9])?)([+-]?)(?:[ \t]+(.*))?$/;
   const emphasizeTitle = value => {
     const title = String(value ?? '').trim();
@@ -2408,7 +3542,20 @@ function convertWmdxCallouts(lines, dialect, warnings, protectedLines) {
       end += 1;
     }
     const bodyText = body.join('\n').replace(/\n+$/, '');
-    if (dialect === 'obsidian') {
+    if (type === 'dropdown') {
+      const summary = marked.parseInline(title || 'Details', {
+        gfm: dialect !== 'commonmark'
+      });
+      const content = marked.parse(bodyText, {
+        gfm: dialect !== 'commonmark',
+        breaks: false,
+        async: false
+      });
+      output[index] = `<details${state === '+' ? ' open' : ''}>\n` +
+        `<summary>${summary}</summary>\n${content.trim()}\n</details>`;
+      detailsIndexes.push(index);
+      for (let row = index + 1; row < end; row += 1) output[row] = '';
+    } else if (dialect === 'obsidian') {
       const opener = `> [!${type}]${state}${title ? ` ${title}` : ''}`;
       const quoted = bodyText.split('\n').map(line => `> ${line}`).join('\n');
       output[index] = `${opener}\n${quoted}`;
@@ -2416,6 +3563,12 @@ function convertWmdxCallouts(lines, dialect, warnings, protectedLines) {
     } else if (dialect === 'gfm' &&
       ['note', 'info', 'tip', 'important', 'warning', 'caution'].includes(type)) {
       const mapped = ['info', 'note'].includes(type) ? 'NOTE' : type.toUpperCase();
+      if (type === 'info') {
+        addWarning(
+          warnings,
+          'GFM has NOTE but no INFO alert; an Obsidian info callout returns as note.'
+        );
+      }
       const quoted = bodyText.split('\n').map(line => `> ${line}`).join('\n');
       const titleLine = title ? `> ${emphasizeTitle(title)}\n` : '';
       output[index] = `> [!${mapped}]\n${titleLine}${quoted}`;
@@ -2430,6 +3583,28 @@ function convertWmdxCallouts(lines, dialect, warnings, protectedLines) {
       addWarning(warnings, 'Wmdx callout type, styling, and fold state were exported as a standard block quote.');
     }
     index = end - 1;
+  }
+  if (detailsIndexes.length) {
+    const removedRows = new Set();
+    for (const detailsIndex of detailsIndexes) {
+      let row = detailsIndex + 1;
+      while (row < output.length && !output[row].trim()) row += 1;
+      for (let blank = detailsIndex + 2; blank < row; blank += 1) {
+        removedRows.add(blank);
+      }
+    }
+    if (removedRows.size) {
+      const compacted = [];
+      const remappedProtectedLines = new Set();
+      for (let index = 0; index < output.length; index += 1) {
+        if (removedRows.has(index)) continue;
+        if (protectedLines.has(index)) remappedProtectedLines.add(compacted.length);
+        compacted.push(output[index]);
+      }
+      protectedLines.clear();
+      for (const index of remappedProtectedLines) protectedLines.add(index);
+      return compacted;
+    }
   }
   return output;
 }
@@ -2501,7 +3676,13 @@ function removeRedundantMarkdownUnderscoreEscapes(source) {
   return text;
 }
 
-function convertWmdxInlineToMarkdown(line, dialect, warnings) {
+function convertWmdxInlineToMarkdown(
+  line,
+  dialect,
+  warnings,
+  generatedFootnotes = [],
+  usedFootnoteLabels = new Set()
+) {
   let output = '';
   let plainStart = 0;
   let index = 0;
@@ -2512,7 +3693,64 @@ function convertWmdxInlineToMarkdown(line, dialect, warnings) {
       protectedValues.push({ marker, value });
       return marker;
     };
-    let text = protectInlineMathSyntax(plainText, protect);
+    let text = String(plainText ?? '');
+    if (dialect === 'gfm') {
+      let output = '';
+      for (let index = 0; index < text.length;) {
+        if (
+          text[index] !== '^' ||
+          text[index + 1] !== '[' ||
+          (index > 0 && text[index - 1] === '\\')
+        ) {
+          output += text[index++];
+          continue;
+        }
+        let depth = 1;
+        let close = index + 2;
+        for (; close < text.length; close++) {
+          if (text[close] === '\\') {
+            close++;
+          } else if (text[close] === '[') {
+            depth++;
+          } else if (text[close] === ']' && --depth === 0) {
+            break;
+          }
+        }
+        const body = text.slice(index + 2, close);
+        if (depth !== 0 || !body.trim()) {
+          output += text[index++];
+          continue;
+        }
+        let number = generatedFootnotes.length + 1;
+        let label = `wmdx-inline-${number}`;
+        while (usedFootnoteLabels.has(label.toLowerCase())) {
+          number++;
+          label = `wmdx-inline-${number}`;
+        }
+        usedFootnoteLabels.add(label.toLowerCase());
+        generatedFootnotes.push({ label, body });
+        output += `[^${label}]`;
+        index = close + 1;
+      }
+      text = output;
+    }
+    if (dialect !== 'obsidian') {
+      text = text.replace(/(?<!\\)!\[\[([^\]\n]+)\]\]/g, (_, target) => {
+        addWarning(
+          warnings,
+          'Obsidian note transclusion has no equivalent in this dialect; it was escaped and preserved as literal text.'
+        );
+        return `\\!\\[\\[${target}\\]\\]`;
+      });
+    }
+    if (dialect === 'commonmark' && /(?<!\\)\^\[[^\]\n]+\]/.test(text)) {
+      addWarning(
+        warnings,
+        'CommonMark has no footnote syntax; Obsidian inline footnotes were preserved as text.'
+      );
+    }
+    text = protectInlineMathSyntax(text, protect);
+    text = protectBareAutolinks(text, protect);
     text = text.replace(
       /(?<![\p{L}\p{N}\p{M}_\\])_([₀₁₂₃]?)(?![₀₁₂₃]_)(\S(?:[^\n]*?\S)?)_(?![\p{L}\p{N}\p{M}_])/gu,
       (_, style, content) => {
@@ -2739,7 +3977,7 @@ function mapWmdxOrderedLists(lines, protectedLines, warnings) {
 function mapWmdxHeadings(lines, protectedLines) {
   return lines.map((line, index) => {
     if (protectedLines.has(index)) return line;
-    const match = /^([ \t]*)\.([1-6])(?:[ \t]+(.*))?$/.exec(line);
+    const match = /^([ \t]*(?:>[ \t]+)*)\.([1-6])(?:[ \t]+(.*))?$/.exec(line);
     return match
       ? `${match[1]}${'#'.repeat(Number(match[2]))}${match[3] ? ` ${match[3]}` : ' '}`
       : line;
@@ -2751,7 +3989,9 @@ function mapWmdxTaskItems(lines, protectedLines, dialect, warnings) {
   const output = lines.map((line, index) => {
     if (protectedLines.has(index)) return line;
     const wmdxTask = /^([ \t]*)\[([ xX])\][ \t]+(.*)$/.exec(line);
-    const markdownTask = /^([ \t]*)([-+*]|\d+[.)])[ \t]+\[([ xX])\][ \t]+(.*)$/.exec(line);
+    const markdownTask =
+      /^((?:[ \t]*>\s*)*[ \t]*)([-+*]|\d+[.)])[ \t]+\[([ xX])\][ \t]+(.*)$/
+        .exec(line);
     const task = wmdxTask
       ? { indent: wmdxTask[1], marker: '-', checked: wmdxTask[2], text: wmdxTask[3] }
       : markdownTask
@@ -2805,6 +4045,92 @@ function addCommonMarkHeadingAnchors(lines, protectedLines = new Set()) {
   });
 }
 
+function mapWmdxParagraphAlignments(lines, protectedLines, dialect) {
+  const alignments = new Map([
+    ['<', 'left'],
+    ['><', 'center'],
+    ['>', 'right'],
+    ['<>', 'justify']
+  ]);
+  const output = [];
+  for (let index = 0; index < lines.length; index += 1) {
+    const line = lines[index];
+    let marker = protectedLines.has(index)
+      ? null
+      : /^([ \t]*)(<|><|>|<>)[ \t]*$/.exec(line);
+    if (marker?.[2] === '>') {
+      const previousLine = lines[index - 1] ?? '';
+      const nextLine = lines[index + 1] ?? '';
+      if (/^[ \t]*>/.test(previousLine) || /^[ \t]*>/.test(nextLine)) {
+        marker = null;
+      }
+    }
+    const alignment = marker ? alignments.get(marker[2]) : null;
+    if (!alignment) {
+      output.push(line);
+      continue;
+    }
+
+    let end = index + 1;
+    while (end < lines.length && lines[end].trim() && !protectedLines.has(end)) {
+      end += 1;
+    }
+    const body = lines.slice(index + 1, end).join('\n').trim();
+    if (!body) {
+      output.push(line);
+      continue;
+    }
+
+    const htmlReadyBody = dialect === 'commonmark'
+      ? convertGfmTablesToCommonMarkHtml(body)
+      : body;
+    const renderOptions = {
+      gfm: dialect !== 'commonmark',
+      breaks: false,
+      async: false
+    };
+    const tokens = marked.lexer(htmlReadyBody, renderOptions);
+    const renderedBody = (
+      tokens.length === 1 && tokens[0].type === 'paragraph'
+        ? marked.parseInline(htmlReadyBody, renderOptions)
+        : marked.parse(htmlReadyBody, renderOptions)
+    ).trim();
+    const indent = marker[1];
+    const alignedHtml = tokens.length === 1 && tokens[0].type === 'paragraph'
+      ? `<div align="${alignment}">${renderedBody}</div>`
+      : `<div align="${alignment}">\n${renderedBody}\n${indent}</div>`;
+    output.push(`${indent}${alignedHtml}`);
+    index = end - 1;
+  }
+  return output;
+}
+
+function separateStandaloneHtmlMediaBlocks(lines) {
+  const output = [];
+  for (let index = 0; index < lines.length; index++) {
+    const line = String(lines[index] ?? '');
+    const isStandaloneMediaBlock =
+      /^<(?:figure|audio|video)\b[\s\S]*<\/(?:figure|audio|video)\s*>$/i
+        .test(line.trim());
+    if (
+      isStandaloneMediaBlock &&
+      output.length &&
+      output.at(-1).trim()
+    ) {
+      output.push('');
+    }
+    output.push(line);
+    if (
+      isStandaloneMediaBlock &&
+      index + 1 < lines.length &&
+      String(lines[index + 1] ?? '').trim()
+    ) {
+      output.push('');
+    }
+  }
+  return output;
+}
+
 export function exportMarkdown(source, dialect = 'commonmark') {
   if (!MARKDOWN_EXPORT_FORMATS.includes(dialect)) {
     throw new TypeError(`Unsupported Markdown export format: ${dialect}`);
@@ -2824,6 +4150,7 @@ export function exportMarkdown(source, dialect = 'commonmark') {
   }
   const markdown = protectCodeFences(source, (originalLines, protectedLines) => {
     protectRawHtmlTableLines(originalLines, protectedLines);
+    protectRawHtmlBlockLines(originalLines, protectedLines);
     if (
       dialect === 'commonmark' &&
       originalLines.some((line, index) =>
@@ -2833,14 +4160,6 @@ export function exportMarkdown(source, dialect = 'commonmark') {
       addWarning(
         warnings,
         'CommonMark has no footnote syntax; footnote source was preserved but may render as ordinary text.'
-      );
-    }
-    if (dialect !== 'obsidian' && originalLines.some((line, index) =>
-      !protectedLines.has(index) && /(?<!\\)\^\[[^\]\n]+\]/.test(line)
-    )) {
-      addWarning(
-        warnings,
-        'Obsidian inline footnotes were preserved as text because this target dialect has no equivalent.'
       );
     }
     let lines = [...originalLines];
@@ -2855,14 +4174,34 @@ export function exportMarkdown(source, dialect = 'commonmark') {
     lines = convertWmdxCallouts(lines, dialect, warnings, protectedLines);
     lines = mapWmdxOrderedLists(lines, protectedLines, warnings);
     lines = mapWmdxTaskItems(lines, protectedLines, dialect, warnings);
+    const generatedFootnotes = [];
+    const usedFootnoteLabels = new Set(
+      [...String(source ?? '').matchAll(/\[\^([^\]\s]+)\]/g)]
+        .map(match => match[1].toLowerCase())
+    );
     let output = lines.map((line, index) => protectedLines.has(index)
       ? line
-      : convertWmdxInlineToMarkdown(line, dialect, warnings));
+      : convertWmdxInlineToMarkdown(
+        line,
+        dialect,
+        warnings,
+        generatedFootnotes,
+        usedFootnoteLabels
+      ));
+    output = mapWmdxParagraphAlignments(output, protectedLines, dialect);
+    if (dialect === 'gfm' && generatedFootnotes.length) {
+      output.push(
+        '',
+        ...generatedFootnotes.map(({ label, body }) => `[^${label}]: ${body}`)
+      );
+    }
     if (dialect === 'commonmark') {
       output = addCommonMarkHeadingAnchors(output, protectedLines);
-      return convertGfmTablesToCommonMarkHtml(output.join('\n')).split('\n');
+      return separateStandaloneHtmlMediaBlocks(
+        convertGfmTablesToCommonMarkHtml(output.join('\n')).split('\n')
+      );
     }
-    return output;
+    return separateStandaloneHtmlMediaBlocks(output);
   });
   return { markdown, warnings };
 }

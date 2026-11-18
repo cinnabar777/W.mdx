@@ -146,11 +146,11 @@ test('top-level raw HTML blocks in Markdown use semantic HTML import without tou
     );
     assert.match(
       rawAnchor.markdown,
-      /\[\*\*the guide\*\*\]\(\/docs\/my%20\(file\)\.md\)/
+      /\[\*\*the guide\*\*\]\(\/docs\/my%20\(file\)\.md "Tooltip"\)/
     );
     assert.match(rawAnchor.markdown, /escaped \\<a href="\/literal">text<\/a>/);
     assert.match(rawAnchor.markdown, /`<a href="\/code">code<\/a>`/);
-    assert.ok(rawAnchor.warnings.some(warning => warning.includes('tooltip titles')));
+    assert.equal(rawAnchor.warnings.some(warning => warning.includes('tooltip titles')), false);
 
     const inlineMedia = convertFromMarkdown(
       'Listen <audio src="assets/voice.ogg"></audio> then ' +
@@ -195,6 +195,75 @@ test('top-level raw HTML blocks in Markdown use semantic HTML import without tou
   assert.doesNotMatch(activeBlock.markdown, /<script|runUnsafeCode/);
   assert.match(activeBlock.markdown, /Safe paragraph\./);
   assert.ok(activeBlock.warnings.some(warning => warning.includes('Active HTML element <script>')));
+});
+
+test('details HTML keeps its body and block spacing through dialect round-trips', async () => {
+  const { convertFromMarkdown, exportMarkdown } =
+    await import('../src/markdownConversion.mjs');
+  const { JSDOM } = require('jsdom');
+  const DOMParser = new JSDOM('').window.DOMParser;
+  const source = [
+    '<details>',
+    '<summary>Expandable details test</summary>',
+    '',
+    'This content is inside a native HTML details element.',
+    '',
+    '</details>',
+    '',
+    'After.',
+    '',
+    '```math',
+    '\\sum_{k=1}^{n} b_k^2',
+    '```'
+  ].join('\n');
+  const mathFence = ['```math', '\\sum_{k=1}^{n} b_k^2', '```'].join('\n');
+
+  const imported = convertFromMarkdown(source, 'commonmark', { DOMParser });
+  assert.match(imported.markdown, /±dropdown- Expandable details test/);
+  assert.match(imported.markdown, /This content is inside a native HTML details element\./);
+  assert.doesNotMatch(imported.markdown, /<\/details>/);
+
+  for (const dialect of ['commonmark', 'gfm', 'obsidian']) {
+    const exported = exportMarkdown(imported.markdown, dialect);
+    assert.match(exported.markdown, /<summary>Expandable details test<\/summary>/, dialect);
+    assert.match(
+      exported.markdown,
+      /<p>This content is inside a native HTML details element\.<\/p>/,
+      dialect
+    );
+    assert.match(exported.markdown, /<\/details>\n\nAfter\./, dialect);
+    const reimported = convertFromMarkdown(exported.markdown, dialect, { DOMParser });
+    assert.match(reimported.markdown, /This content is inside a native HTML details element\./, dialect);
+    assert.doesNotMatch(reimported.markdown, /<\/details>/, dialect);
+    assert.ok(reimported.markdown.includes(mathFence), dialect);
+  }
+});
+
+test('Setext heading conversion keeps later fenced code protected', async () => {
+  const { convertFromMarkdown, exportMarkdown } =
+    await import('../src/markdownConversion.mjs');
+  const source = [
+    'First section',
+    '-------------',
+    '',
+    'Second section',
+    '--------------',
+    '',
+    '```math',
+    '\\sum_{k=1}^{n} b_k^2',
+    '```'
+  ].join('\n');
+
+  const imported = convertFromMarkdown(source, 'commonmark');
+  const expectedFence = ['```math', '\\sum_{k=1}^{n} b_k^2', '```'].join('\n');
+  assert.ok(imported.markdown.includes(expectedFence));
+
+  for (const dialect of ['commonmark', 'gfm', 'obsidian']) {
+    const exported = exportMarkdown(imported.markdown, dialect);
+    const reimported = convertFromMarkdown(exported.markdown, dialect);
+    assert.ok(reimported.markdown.includes(expectedFence), dialect);
+    assert.doesNotMatch(reimported.markdown, /<sup>|\\\^\{n\}/, dialect);
+  }
 });
 
 test('superscript imports and exports through semantic HTML without reinterpreting literals', async () => {
@@ -371,6 +440,92 @@ test('Obsidian and GFM callouts become native Wmdx callouts with indented bodies
   assert.match(customObsidianCallout.markdown, /^  Its body is retained\.$/m);
 });
 
+test('Obsidian info callout warns when GFM normalizes it to NOTE', async () => {
+  const { convertFromMarkdown, exportMarkdown } =
+    await import('../src/markdownConversion.mjs');
+  const imported = convertFromMarkdown(
+    '> [!info] Header\n> Body',
+    'obsidian'
+  );
+  const gfm = exportMarkdown(imported.markdown, 'gfm');
+  const returned = convertFromMarkdown(gfm.markdown, 'gfm');
+  const obsidian = exportMarkdown(returned.markdown, 'obsidian');
+
+  assert.equal(gfm.markdown, '> [!NOTE]\n> **Header**\n> Body\n');
+  assert.deepEqual(gfm.warnings, [
+    'GFM has NOTE but no INFO alert; an Obsidian info callout returns as note.'
+  ]);
+  assert.equal(
+    obsidian.markdown,
+    '> [!note]\n> **Header**\n> Body\n\n\n'
+  );
+  assert.deepEqual(returned.warnings, []);
+  assert.deepEqual(obsidian.warnings, []);
+});
+
+test('Obsidian callout export covers every GFM alert and fold-state loss', async () => {
+  const { convertFromMarkdown, exportMarkdown } =
+    await import('../src/markdownConversion.mjs');
+  const alertTypes = [
+    ['note', 'NOTE'],
+    ['info', 'NOTE'],
+    ['tip', 'TIP'],
+    ['important', 'IMPORTANT'],
+    ['warning', 'WARNING'],
+    ['caution', 'CAUTION']
+  ];
+
+  for (const [type, expectedAlert] of alertTypes) {
+    for (const state of ['', '-', '+']) {
+      const imported = convertFromMarkdown(
+        `> [!${type}]${state} Callout title\n> Body`,
+        'obsidian'
+      );
+      const gfm = exportMarkdown(imported.markdown, 'gfm');
+      assert.equal(
+        gfm.markdown,
+        `> [!${expectedAlert}]\n> **Callout title**\n> Body\n`,
+        `${type} ${state || 'unfolded'}`
+      );
+      assert.equal(
+        gfm.warnings.some(warning => warning.includes('returns as note')),
+        type === 'info'
+      );
+      assert.equal(
+        gfm.warnings.some(warning => warning.includes('expanded or collapsed state')),
+        Boolean(state)
+      );
+      const returned = exportMarkdown(
+        convertFromMarkdown(gfm.markdown, 'gfm').markdown,
+        'obsidian'
+      );
+      const returnedType = expectedAlert.toLowerCase();
+      assert.match(
+        returned.markdown,
+        new RegExp(`^> \\[!${returnedType}\\]$`, 'm'),
+        `${type} returns as a callout`
+      );
+      assert.doesNotMatch(
+        returned.markdown,
+        new RegExp(`^> \\[!${returnedType}\\][+-]`, 'm')
+      );
+    }
+  }
+
+  const unsupported = convertFromMarkdown(
+    '> [!question]-\n> Body',
+    'obsidian'
+  );
+  const commonmark = exportMarkdown(unsupported.markdown, 'commonmark');
+  const gfm = exportMarkdown(unsupported.markdown, 'gfm');
+  for (const converted of [commonmark, gfm]) {
+    assert.equal(converted.markdown, '> **question**\n> Body\n');
+    assert.ok(converted.warnings.some(warning =>
+      warning.includes('callout type, styling, and fold state')
+    ));
+  }
+});
+
 test('CommonMark wikilink-like text stays literal when exported to Obsidian', async () => {
   const { convertFromMarkdown, exportMarkdown } =
     await import('../src/markdownConversion.mjs');
@@ -389,6 +544,8 @@ test('CommonMark wikilink-like text stays literal when exported to Obsidian', as
 test('Obsidian wikilinks and media embeds import to Wmdx resources outside code', async () => {
   const { convertFromMarkdown, exportMarkdown } =
     await import('../src/markdownConversion.mjs');
+  const { JSDOM } = require('jsdom');
+  const DOMParser = new JSDOM('').window.DOMParser;
   const result = convertFromMarkdown([
     '[[Project Notes#Setup|Read this]] and `[[literal]]`.',
     '',
@@ -415,6 +572,58 @@ test('Obsidian wikilinks and media embeds import to Wmdx resources outside code'
   assert.match(exported.markdown, /^!\[\[audio\/voice\.ogg\]\]$/m);
   assert.match(exported.markdown, /^!\[\[video\/clip\.mp4\]\]$/m);
   assert.match(exported.markdown, /^!\[\[manual\.pdf\]\]$/m);
+
+  for (const dialect of ['commonmark', 'gfm']) {
+    const standard = exportMarkdown(result.markdown, dialect);
+    assert.match(standard.markdown, /\[Read this\]\(Project%20Notes#Setup\)/);
+    assert.match(standard.markdown, /<figure><img src="assets\/diagram\.png"[^>]*width="640"><\/figure>/);
+    assert.match(standard.markdown, /<audio controls src="audio\/voice\.ogg"/);
+    assert.match(standard.markdown, /<video controls src="video\/clip\.mp4"/);
+    assert.match(standard.markdown, /\[manual\.pdf\]\(manual\.pdf "wmdx-attachment"\)/);
+    assert.match(standard.markdown, /^\\!\\\[\\\[Another Note\\\]\\\]$/m);
+    assert.ok(standard.warnings.some(warning => warning.includes('Obsidian note transclusion')));
+    assert.match(standard.markdown, /<\/figure>\n\n<audio/);
+    assert.match(standard.markdown, /<\/audio>\n\n<video/);
+    assert.match(standard.markdown, /<\/video>\n\n\[manual\.pdf\]/);
+
+    const reimported = convertFromMarkdown(standard.markdown, dialect, { DOMParser });
+    assert.match(reimported.markdown, /<figure><img src="assets\/diagram\.png"[^>]*width="640"><\/figure>/);
+    assert.match(reimported.markdown, /^\[voice\.ogg\]\(audio\/voice\.ogg "wmdx-audio"\)$/m);
+    assert.match(reimported.markdown, /^\[clip\.mp4\]\(video\/clip\.mp4 "wmdx-video"\)$/m);
+    assert.match(reimported.markdown, /^\[manual\.pdf\]\(manual\.pdf "wmdx-attachment"\)$/m);
+    assert.ok(reimported.warnings.some(warning => warning.includes('dimensions or alignment')));
+  }
+});
+
+test('Obsidian note transclusions export as warned literal text outside code', async () => {
+  const { convertFromMarkdown, exportMarkdown } =
+    await import('../src/markdownConversion.mjs');
+  const imported = convertFromMarkdown([
+    '![[Another Note#Section|Alias]]',
+    '',
+    '`![[literal code]]`',
+    '',
+    '```md',
+    '![[literal fence]]',
+    '```'
+  ].join('\n'), 'obsidian');
+
+  for (const dialect of ['commonmark', 'gfm']) {
+    const exported = exportMarkdown(imported.markdown, dialect);
+    assert.match(
+      exported.markdown,
+      /^\\!\\\[\\\[Another Note#Section\|Alias\\\]\\\]$/m
+    );
+    assert.match(exported.markdown, /`!\[\[literal code\]\]`/);
+    assert.match(exported.markdown, /```md\n!\[\[literal fence\]\]\n```/);
+    assert.equal(
+      exported.warnings.filter(warning => warning.includes('Obsidian note transclusion')).length,
+      1
+    );
+
+    const roundTrip = convertFromMarkdown(exported.markdown, dialect);
+    assert.match(roundTrip.markdown, /Another Note#Section\|Alias/);
+  }
 });
 
 test('Markdown export uses media elements and attachment links for embedded resources', async () => {
@@ -434,14 +643,90 @@ test('Markdown export uses media elements and attachment links for embedded reso
   );
 });
 
-test('Obsidian inline footnotes warn when exported to a dialect without footnotes', async () => {
+test('Markdown dialects use native image syntax when size and alignment are absent', async () => {
   const { exportMarkdown } = await import('../src/markdownConversion.mjs');
-  const source = 'A note^[inline detail] remains attached to its sentence.';
+  const source = [
+    '![assets/pixel.png|Pixel||]',
+    '![https://example.test/pixel.png|Remote pixel||]',
+    '![https://images.example.test/640x240/png|Extensionless endpoint pixel||]',
+    '![data:image/png;base64,AQIDBA==|Embedded pixel||]'
+  ].join('\n');
+  const expectedStandard = [
+    '![Pixel](assets/pixel.png)',
+    '![Remote pixel](https://example.test/pixel.png)',
+    '![Extensionless endpoint pixel](https://images.example.test/640x240/png)',
+    '![Embedded pixel](data:image/png;base64,AQIDBA==)'
+  ].join('\n');
+
+  for (const dialect of ['commonmark', 'gfm']) {
+    const result = exportMarkdown(source, dialect);
+    assert.equal(result.markdown, expectedStandard, `${dialect} image syntax`);
+    assert.deepEqual(result.warnings, []);
+  }
+
+  const obsidian = exportMarkdown(source, 'obsidian');
+  assert.equal(
+    obsidian.markdown,
+    '![[assets/pixel.png|Pixel]]\n' +
+      '![Remote pixel](https://example.test/pixel.png)\n' +
+      '![Extensionless endpoint pixel](https://images.example.test/640x240/png)\n' +
+    '![Embedded pixel](data:image/png;base64,AQIDBA==)'
+  );
+  assert.deepEqual(obsidian.warnings, []);
+});
+
+test('An unmatched math fence does not shield later Markdown from export', async () => {
+  const { exportMarkdown } = await import('../src/markdownConversion.mjs');
+  const source = [
+    '$$',
+    'An incomplete math block.',
+    '',
+    '```math',
+    'x^{n} + y^{m}',
+    '```',
+    '',
+    '![assets/pixel.png|Pixel||]'
+  ].join('\n');
+  const result = exportMarkdown(source, 'commonmark');
+
+  assert.match(result.markdown, /!\[Pixel\]\(assets\/pixel\.png\)/);
+  assert.match(result.markdown, /```math\nx\^{n} \+ y\^{m}\n```/);
+});
+
+test('Obsidian inline footnotes map to GFM and warn for CommonMark', async () => {
+  const { exportMarkdown } = await import('../src/markdownConversion.mjs');
+  const { parseFootnotes } = await import('../src/footnotes.js');
+  const source = [
+    'A note^[inline detail] remains attached to its sentence.',
+    '`^[code only]` and \\^[escaped].',
+    '',
+    'This one collides: [^wmdx-inline-1].'
+  ].join('\n');
   const commonmark = exportMarkdown(source, 'commonmark');
+  const gfm = exportMarkdown(source, 'gfm');
   const obsidian = exportMarkdown(source, 'obsidian');
 
   assert.equal(commonmark.markdown, source);
-  assert.ok(commonmark.warnings.some(warning => warning.includes('inline footnotes')));
+  assert.ok(commonmark.warnings.some(warning => warning.includes('CommonMark has no footnote syntax')));
+  assert.equal(
+    gfm.markdown,
+    'A note[^wmdx-inline-2] remains attached to its sentence.\n' +
+      '`^[code only]` and \\^[escaped].\n\n' +
+      'This one collides: [^wmdx-inline-1].\n\n' +
+      '[^wmdx-inline-2]: inline detail'
+  );
+  assert.deepEqual(gfm.warnings, []);
+  const parsed = parseFootnotes(gfm.markdown);
+  assert.equal(parsed.references.find(reference => reference.label === 'wmdx-inline-2')?.label,
+    'wmdx-inline-2');
+  assert.equal(
+    parsed.definitions.find(definition => definition.label === 'wmdx-inline-2')?.body,
+    'inline detail'
+  );
+  assert.deepEqual(
+    exportMarkdown('`^[code only]` and \\^[escaped].', 'commonmark').warnings,
+    []
+  );
   assert.deepEqual(obsidian.warnings, []);
 });
 
@@ -495,7 +780,9 @@ test('Markdown export maps Wmdx headings, links, tables, and callout states by t
     'H~2~O and ~~removed~~.',
     '',
     '±warning- Read carefully',
-    '  This body is folded.'
+    '  This body is folded.',
+    '',
+    '> .2 Heading inside a quote'
   ].join('\n');
 
   const commonmark = exportMarkdown(source, 'commonmark');
@@ -510,6 +797,7 @@ test('Markdown export maps Wmdx headings, links, tables, and callout states by t
   assert.match(commonmark.markdown, /- <input type="checkbox" disabled checked> Complete a task/);
   assert.match(commonmark.markdown, /H<sub>2<\/sub>O and <del>removed<\/del>\./);
   assert.match(commonmark.markdown, /> \*\*Read carefully\*\*/);
+  assert.match(commonmark.markdown, /^> ## Heading inside a quote$/m);
   assert.ok(!commonmark.warnings.some(warning => warning.includes('Pipe tables')));
   assert.ok(commonmark.warnings.some(warning => warning.includes('alphabetic and Roman')));
   assert.ok(commonmark.warnings.some(warning => warning.includes('CommonMark has no task-list')));
@@ -533,6 +821,27 @@ test('Markdown export maps Wmdx headings, links, tables, and callout states by t
   assert.doesNotMatch(inline.markdown, /=₁pen=/);
   assert.match(inline.markdown, /<u>wave<\/u>/);
   assert.ok(inline.warnings.some(warning => warning.includes('Colored or styled underline')));
+});
+
+test('single-paragraph alignment HTML avoids an injected paragraph wrapper', async () => {
+  const { exportMarkdown } = await import('../src/markdownConversion.mjs');
+  const alignments = [
+    ['<', 'left'],
+    ['><', 'center'],
+    ['>', 'right'],
+    ['<>', 'justify']
+  ];
+
+  for (const dialect of ['commonmark', 'gfm', 'obsidian']) {
+    for (const [marker, alignment] of alignments) {
+      const result = exportMarkdown(`${marker}\n**Aligned** text`, dialect);
+      assert.equal(
+        result.markdown,
+        `<div align="${alignment}"><strong>Aligned</strong> text</div>`,
+        `${dialect} ${alignment} alignment`
+      );
+    }
+  }
 });
 
 test('strict CommonMark converts GFM tables nested in blockquotes and lists to raw HTML', async () => {
@@ -574,6 +883,19 @@ test('strict CommonMark converts GFM tables nested in blockquotes and lists to r
   }
 });
 
+test('HTML import escapes only ordered markers that can interrupt a paragraph', async () => {
+  const { convertFromHtml } = await import('../src/markdownConversion.mjs');
+  const { JSDOM } = require('jsdom');
+  const Parser = new JSDOM('').window.DOMParser;
+  const one = convertFromHtml('<p>Before\n1. literal text</p>', Parser);
+  const fourteen = convertFromHtml('<p>Before\n14. literal text</p>', Parser);
+
+  assert.match(one.markdown, /1\\\./);
+  assert.doesNotMatch(one.markdown, /\\1\./);
+  assert.match(fourteen.markdown, /14\./);
+  assert.doesNotMatch(fourteen.markdown, /\\14\./);
+});
+
 test('HTML import converts semantic content and omits active elements', async () => {
   const { JSDOM } = require('jsdom');
   const { convertFromHtml } = await import('../src/markdownConversion.mjs');
@@ -582,8 +904,10 @@ test('HTML import converts semantic content and omits active elements', async ()
     '<h1>Title</h1><p><strong>Bold</strong> and <u>underlined</u> with H<sub>2</sub>O.</p>' +
     '<ul><li>One<ul><li>Nested</li></ul></li><li><input type="checkbox" checked>Done</li></ul>' +
     '<div align="center"><p>Centered</p></div>' +
+    '<div style="text-align:justify; text-justify:inter-word">Justified</div>' +
     '<figure style="text-align:center"><img src="images/photo.png" alt="Photo" width="120" height="60">' +
     '<figcaption>Caption</figcaption></figure>' +
+    '<figure><img src="wide.png" alt="Wide" width="100"></figure>' +
     '<a href="files/notes (1).pdf" download>PDF attachment</a>' +
     '<script>alert(1)</script>',
     Parser
@@ -595,7 +919,16 @@ test('HTML import converts semantic content and omits active elements', async ()
   assert.match(result.markdown, /- One\n  - Nested/);
   assert.match(result.markdown, /- \[x\] Done/);
   assert.match(result.markdown, /^><\nCentered$/m);
+  assert.match(
+    result.markdown,
+    /^<div style="text-align: justify; text-justify: inter-word;">Justified<\/div>$/m
+  );
+  assert.ok(!result.warnings.some(warning => warning.includes('text-justify')));
   assert.match(result.markdown, /!\[images\/photo\.png\|Caption\|120x60\|><\]/);
+  assert.match(
+    result.markdown,
+    /<figure><img src="wide\.png" alt="Wide" width="100"><\/figure>/
+  );
   assert.match(
     result.markdown,
     /\[PDF attachment\]\(files\/notes%20\(1\)\.pdf "wmdx-attachment"\)/
@@ -604,6 +937,29 @@ test('HTML import converts semantic content and omits active elements', async ()
   assert.ok(result.warnings.some(warning => warning.includes('script')));
   const comments = convertFromHtml('<p>Text</p><!-- hidden note -->', Parser);
   assert.ok(comments.warnings.some(warning => warning.includes('comments')));
+});
+
+test('HTML heading whitespace stays inside the heading through conversion', async () => {
+  const { JSDOM } = require('jsdom');
+  const { convertFromHtml, exportMarkdown } =
+    await import('../src/markdownConversion.mjs');
+  const { renderMarkdownHtml } = await import('../src/htmlExport.mjs');
+  const dom = new JSDOM('');
+  const imported = convertFromHtml('<h1>Wrapped\nheading</h1>', dom.window.DOMParser);
+  for (const profile of ['commonmark', 'gfm', 'obsidian']) {
+    const exported = exportMarkdown(imported.markdown, profile);
+    const rendered = renderMarkdownHtml(exported.markdown, {
+      profile,
+      window: dom.window
+    });
+    const document = new dom.window.DOMParser()
+      .parseFromString(rendered.html, 'text/html');
+    const heading = document.querySelector('h1');
+
+    assert.ok(heading, `${profile} keeps the heading`);
+    assert.equal(heading.textContent, 'Wrapped heading');
+    assert.equal(document.querySelectorAll('p').length, 0);
+  }
 });
 
 test('generated HTML table of contents imports as working links in every Markdown flavor', async () => {
@@ -690,7 +1046,33 @@ test('MHTML absolute same-document TOC URLs re-import as flavor-native heading l
   assert.doesNotMatch(obsidian.markdown, /appassets\.androidplatform\.net/);
 });
 
-test('HTML conversion reports tooltip and CSS losses that Markdown cannot represent', async () => {
+test('percent-encoded same-document heading fragments resolve during HTML import', async () => {
+  const { JSDOM } = require('jsdom');
+  const { convertFromHtml, exportMarkdown } =
+    await import('../src/markdownConversion.mjs');
+  const Parser = new JSDOM('').window.DOMParser;
+  const baseLocation = 'https://appassets.androidplatform.net/assets/www/document.html';
+  const imported = convertFromHtml(
+    '<nav class="toc-container"><a href="' + baseLocation +
+      '#project%2Dsetup">Encoded target</a></nav>' +
+      '<h1 id="project-setup">Project Setup</h1>',
+    Parser,
+    { baseLocation }
+  );
+
+  assert.deepEqual(imported.warnings, []);
+  assert.match(imported.markdown, /\[#Project Setup\|Encoded target\|\|\]/);
+  assert.match(
+    exportMarkdown(imported.markdown, 'obsidian').markdown,
+    /\[\[#Project Setup\|Encoded target\]\]/
+  );
+  assert.match(
+    exportMarkdown(imported.markdown, 'commonmark').markdown,
+    /\[Encoded target\]\(#project-setup\)/
+  );
+});
+
+test('HTML conversion preserves link titles and reports unrepresentable CSS loss', async () => {
   const { JSDOM } = require('jsdom');
   const { convertFromHtml } = await import('../src/markdownConversion.mjs');
   const Parser = new JSDOM('').window.DOMParser;
@@ -700,9 +1082,8 @@ test('HTML conversion reports tooltip and CSS losses that Markdown cannot repres
     Parser
   );
 
-  assert.match(result.markdown, /\[Link\]\(https:\/\/example\.test\)/);
-  assert.doesNotMatch(result.markdown, /Link tooltip/);
-  assert.ok(result.warnings.some(warning => warning.includes('tooltip titles')));
+  assert.match(result.markdown, /\[Link\]\(https:\/\/example\.test "Link tooltip"\)/);
+  assert.equal(result.warnings.some(warning => warning.includes('tooltip titles')), false);
   assert.ok(result.warnings.some(warning => warning.includes('inline CSS')));
 });
 

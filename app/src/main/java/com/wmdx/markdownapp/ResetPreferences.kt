@@ -458,16 +458,22 @@ object PreferenceResetHelper {
     }
 
     fun getDefaultValue(key: String): Any? {
+        return AppPreferenceDefaults.get(key) ?: getBuiltInDefaultValue(key)
+    }
+
+    private fun getBuiltInDefaultValue(key: String): Any? {
         return when {
             getPerHeadingOverrideDefault(key) != null -> getPerHeadingOverrideDefault(key)
             key.endsWith("_font_family") -> "default"
             key == "pref_body_font_size" -> 16
             key == "pref_body_font_weight" -> 400
+            key == "pref_soft_breaks_as_spaces" -> false
             key == "pref_body_text_color" -> "default"
             key == "pref_body_background_color" -> "default"
             key == "pref_heading_scale_percent" -> 100
             key == "pref_heading_color" -> "default"
             key == "pref_heading_word_spacing" -> "0px"
+            key == "pref_italic_font_size" -> 16
             key == "pref_font_weight_bold" -> 700
             key == "pref_font_weight_italic" -> 400
             key == "pref_font_weight_heading" -> 700
@@ -499,14 +505,14 @@ object PreferenceResetHelper {
             key == "pref_paragraph_margin_bottom" -> 8
             key == "pref_link_decoration" -> "solid"
             key == "pref_link_underline_thickness" -> 1
-            key == "pref_links_authoring_syntax" -> "wmdx"
+            key == "pref_links_authoring_syntax" -> "commonmark"
             key == "pref_code_padding" -> 4
             key == "pref_code_border_radius" -> 4
             key == "pref_body_margin_left" -> 16
             key == "pref_body_margin_right" -> 16
             key == "pref_heading_margin_left" -> 0
             key == "pref_heading_margin_right" -> 0
-            key == "pref_list_left_indent" -> 24
+            key == "pref_list_left_indent" -> 12
             key == "pref_list_inherit_body_typography" -> true
             key == "pref_list_font_family" -> "default"
             key == "pref_font_file_list" -> null
@@ -549,8 +555,8 @@ object PreferenceResetHelper {
             key == "pref_callout_line_color" -> "default"
             key == "pref_callout_syntax_enabled" ||
                 key == "pref_callout_syntax_wmdx_enabled" ||
-                key == "pref_callout_syntax_obsidian_enabled" -> true
-            key == "pref_callout_authoring_syntax" -> "wmdx"
+                key == "pref_callout_syntax_obsidian_enabled" -> false
+            key == "pref_callout_authoring_syntax" -> "obsidian"
             key == "pref_callout_bg_color" -> "default"
             key == "pref_callout_text_color" -> "default"
             key == "pref_callout_inherit_body_typography" -> true
@@ -797,6 +803,7 @@ object PreferenceResetHelper {
             key == "pref_settings_bg_color" -> "#000000"
             key == "pref_hide_status_bar" -> false
             key == "pref_hide_nav_bar" -> false
+            key == "pref_markdown_profile" -> "commonmark"
             key == "pref_editor_mode" -> "rendered"
             key == "pref_markdown_syntax_exposure" -> "hidden"
             key == "pref_export_format" -> "html"
@@ -812,6 +819,10 @@ object PreferenceResetHelper {
             key == "pref_hotkey_open_with" -> "ctrl+shift+o"
             key == "pref_hotkey_line_numbers" -> "ctrl+alt+l"
             key == "pref_hotkey_toggle_table_scroll" -> ""
+            key == "pref_hotkey_syntax_exposure_hidden" -> ""
+            key == "pref_hotkey_syntax_exposure_caret" -> ""
+            key == "pref_hotkey_syntax_exposure_line" -> ""
+            key == "pref_hotkey_syntax_exposure_block" -> ""
             key == "pref_hotkey_footnote" -> "ctrl+shift+f"
             key == "pref_footnote_inherit_body_typography" -> true
             key == "pref_footnote_font_weight" -> 400
@@ -896,28 +907,36 @@ object PreferenceResetHelper {
                     "pref_pen_blue_text_color" to "#4dabf7",
                     "pref_pen_purple_text_color" to "#845ef7"
                 )[key]
-            key == "pref_underline_use_wmdx_syntax" -> true
+            key == "pref_underline_use_wmdx_syntax" -> false
             key == "pref_links_enabled" ||
                 key == "pref_links_commonmark_enabled" ||
                 key == "pref_links_reference_enabled" ||
-                key == "pref_links_obsidian_enabled" ||
-                key == "pref_links_wmdx_enabled" ||
                 key == "pref_blockquote_syntax_enabled" ||
                 key == "pref_heading_syntax_enabled" ||
-                key == "pref_heading_syntax_wmdx_enabled" ||
                 key == "pref_heading_syntax_hash_enabled" ||
                 key == "pref_heading_syntax_setext_enabled" ||
+                key == "pref_list_syntax_enabled" ||
+                key == "pref_list_syntax_markdown_enabled" -> true
+            key == "pref_gfm_extensions_enabled" ||
+                key == "pref_links_obsidian_enabled" ||
+                key == "pref_links_wmdx_enabled" ||
+                key == "pref_heading_syntax_wmdx_enabled" ||
                 key == "pref_footnote_syntax_enabled" ||
                 key == "pref_footnote_syntax_wmdx_enabled" ||
                 key == "pref_footnote_syntax_markdown_enabled" ||
                 key == "pref_footnote_syntax_obsidian_inline_enabled" ||
-                key == "pref_list_syntax_enabled" ||
-                key == "pref_list_syntax_markdown_enabled" ||
                 key == "pref_list_syntax_gfm_tasks_enabled" ||
-                key == "pref_list_syntax_wmdx_enabled" -> true
-            key == "pref_heading_authoring_syntax" -> "wmdx"
-            key == "pref_footnote_authoring_syntax" -> "wmdx"
-            key == "pref_list_authoring_syntax" -> "wmdx"
+                key == "pref_list_syntax_wmdx_enabled" ||
+                key == "pref_callout_syntax_enabled" ||
+                key == "pref_callout_syntax_wmdx_enabled" ||
+                key == "pref_callout_syntax_obsidian_enabled" ||
+                key == "pref_wmdx_color_syntax_enabled" ||
+                key == "pref_obsidian_highlight_enabled" ||
+                key == "pref_wmdx_subscript_enabled" ||
+                key == "pref_wmdx_superscript_enabled" -> false
+            key == "pref_heading_authoring_syntax" -> "hash"
+            key == "pref_footnote_authoring_syntax" -> "markdown"
+            key == "pref_list_authoring_syntax" -> "markdown"
             key == "pref_list_default_bullet_marker" -> "-"
             key == "pref_list_default_ordered_style" -> "decimal"
             key.startsWith("pref_underline_") && key.endsWith("_color") -> "default"
@@ -1042,6 +1061,7 @@ object PreferenceResetHelper {
         return when (defaultVal) {
             is Int -> prefs.getInt(key, defaultVal) != defaultVal
             is Boolean -> prefs.getBoolean(key, defaultVal) != defaultVal
+            is Float -> prefs.getFloat(key, defaultVal) != defaultVal
             is String -> prefs.getString(key, defaultVal) != defaultVal
             else -> false
         }
@@ -1322,7 +1342,7 @@ object PreferenceResetHelper {
         } else {
             null
         }
-        val markdownProfile = prefs.getString("pref_markdown_profile", "wmdx")
+        val markdownProfile = prefs.getString("pref_markdown_profile", "commonmark")
         val inheritedMarkdownSyntaxValue = when (key) {
             "pref_obsidian_highlight_enabled" -> markdownProfile == "obsidian"
             "pref_wmdx_color_syntax_enabled",
@@ -1345,21 +1365,38 @@ object PreferenceResetHelper {
             pref.setDefaultValue(defVal)
         }
         if (keepsInheritedValue) pref.isPersistent = false
-        when (pref) {
+        val valueHandledByPreference = when (pref) {
             is SeekBarPreference -> {
                 if (defVal is Int) {
                     pref.value = defVal
                 }
+                true
             }
             is EditTextPreference -> {
                 if (defVal is String) pref.text = defVal
+                true
             }
             is ListPreference -> {
                 if (defVal is String) pref.value = defVal
+                true
             }
             is SwitchPreferenceCompat -> {
                 if (defVal is Boolean) pref.isChecked = defVal
+                true
             }
+            else -> false
+        }
+        if (!valueHandledByPreference && defVal != null) {
+            val editor = prefs.edit()
+            when (defVal) {
+                is Boolean -> editor.putBoolean(key, defVal)
+                is Int -> editor.putInt(key, defVal)
+                is Long -> editor.putLong(key, defVal)
+                is Float -> editor.putFloat(key, defVal)
+                is String -> editor.putString(key, defVal)
+                else -> Unit
+            }
+            editor.apply()
         }
         // Setters above may persist their value. For a heading override, the
         // value shown by the control is inherited; its key must remain absent.

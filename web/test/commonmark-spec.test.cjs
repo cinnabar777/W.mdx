@@ -15,26 +15,63 @@ const verifiedHtmlSemanticExamples = new Set(
   Array.from({ length: 20 }, (_, index) => index + 613)
 );
 const verifiedHtmlBlockExamples = new Set([
-  21, 31, 148, 149, 152, 153, 154, 156, 157, 158, 160, 167, 168, 174, 175, 179, 181,
-  182, 183, 184, 187, 188, 191, 344, 476, 477, 642, 643
+  21, 31, 148, 149, 150, 151, 152, 153, 154, 155, 156, 157, 158, 159, 160, 162, 163, 164,
+  161, 165, 166, 167, 168, 169, 171, 174, 175, 177, 179, 181, 182, 183, 184, 185, 186, 187,
+  180, 188, 189, 190, 191, 344, 476, 477, 642, 643
 ]);
 const verifiedHtmlLinkExamples = new Set([201, 491, 494, 524, 536]);
+const verifiedHtmlSecurityLosses = new Set([170, 172, 173, 176, 178]);
+const verifiedHtmlInlineExamples = new Set([475]);
+const expectedHtmlSecurityLosses = new Map([
+  [170, {
+    markdown: 'okay\n',
+    warning: 'Active HTML element <script> was omitted.'
+  }],
+  [172, {
+    markdown: 'okay\n',
+    warning: 'Active HTML element <style> was omitted.'
+  }],
+  [173, {
+    markdown: '',
+    warning: 'Active HTML element <style> was omitted.'
+  }],
+  [176, {
+    markdown: '*foo*\n',
+    warning: 'Active HTML element <style> was omitted.'
+  }],
+  [178, {
+    markdown: '1\\. \\*bar*\n',
+    warning: 'Active HTML element <script> was omitted.'
+  }]
+]);
+const rawImageTitleWarning =
+  'HTML image tooltip titles have no native Wmdx field; raw image HTML was preserved.';
 const verifiedHtmlInteropExamples = new Set([
   ...verifiedHtmlSemanticExamples,
   ...verifiedHtmlBlockExamples,
-  ...verifiedHtmlLinkExamples
+  ...verifiedHtmlLinkExamples,
+  ...verifiedHtmlSecurityLosses,
+  ...verifiedHtmlInlineExamples
 ]);
 const rawHtmlPreservedWarning =
   'Raw HTML was preserved during Markdown conversion; unconverted tags may not render like the source dialect.';
 const unconvertedHtmlBlockWarning =
   'An HTML block without convertible text was preserved unchanged.';
 const expectedHtmlInteropWarnings = new Map([
-  ...[21, 31, 148, 149, 160, 191].map(number => [number, [rawHtmlPreservedWarning]]),
-  ...[152, 153, 154, 156, 157, 158, 184, 188].map(number => [
+  ...[21, 31, 148, 149, 150, 151, 155, 159, 160, 161, 162, 163, 164, 165, 166, 169, 171, 185, 186, 189, 190, 191]
+    .map(number => [number, [rawHtmlPreservedWarning]]),
+  [180, [unconvertedHtmlBlockWarning]],
+  [177, [unconvertedHtmlBlockWarning]],
+  [184, [rawHtmlPreservedWarning]],
+  ...[153, 154].map(number => [
     number,
     [rawHtmlPreservedWarning, unconvertedHtmlBlockWarning]
   ]),
-  ...[167, 179, 181, 182, 183].map(number => [
+  ...[152, 156, 157, 158, 167, 188].map(number => [
+    number,
+    [rawHtmlPreservedWarning]
+  ]),
+  ...[179, 181, 182, 183].map(number => [
     number,
     [unconvertedHtmlBlockWarning]
   ]),
@@ -192,7 +229,7 @@ before(async () => {
 test('CommonMark 0.31.2 upstream corpus inventory is complete', () => {
   assert.equal(commonmarkCases.length, 652, 'the pinned upstream corpus is complete');
   assert.equal(htmlInteropCases.length, 77, 'HTML interoperability cases stay outside Wmdx-native parsing');
-  assert.equal(pendingHtmlSemanticCases.length, 24, 'every HTML case is verified or explicitly pending');
+  assert.equal(pendingHtmlSemanticCases.length, 0, 'every HTML case is verified or explicitly pending');
   assert.equal(parserComparableCases.length, 575, 'all non-HTML examples are classified');
   assert.equal(activeCases.length, 575, 'all parser-comparable examples are checked');
   assert.deepEqual(
@@ -764,15 +801,15 @@ test('selected CommonMark HTML cases round-trip through all flavors with explici
             ...commonMark.warnings
           ])
         ].sort();
-        assert.deepEqual(
-          warnings,
-          [...(expectedHtmlInteropWarnings.get(number) ?? [])].sort(),
-          `CM-EX-${number} warning/loss contract through ${target}`
-        );
         assert.equal(
           commonMark.markdown,
           example.markdown,
           `CM-EX-${number} must return byte-for-byte after ${target}`
+        );
+        assert.deepEqual(
+          warnings,
+          [...(expectedHtmlInteropWarnings.get(number) ?? [])].sort(),
+          `CM-EX-${number} warning/loss contract through ${target}`
         );
         const actualHtml = renderer.render(parser.parse(commonMark.markdown));
         assert.equal(
@@ -794,6 +831,62 @@ test('selected CommonMark HTML cases round-trip through all flavors with explici
 
       });
     }
+  }
+});
+
+test('CommonMark active HTML cases record the intended security loss in every flavor', async t => {
+  const { JSDOM } = require('jsdom');
+  const { convertFromMarkdown, exportMarkdown } =
+    await import('../src/markdownConversion.mjs');
+  const DOMParser = new JSDOM('').window.DOMParser;
+
+  for (const number of verifiedHtmlSecurityLosses) {
+    const example = commonmarkCases.find(candidate => candidate.example === number);
+    const expected = expectedHtmlSecurityLosses.get(number);
+    for (const target of ['commonmark', 'gfm', 'obsidian']) {
+      await t.test(`CM-EX-${number} → ${target}: safe omission`, () => {
+        const imported = convertFromMarkdown(example.markdown, 'commonmark', { DOMParser });
+        const exported = exportMarkdown(imported.markdown, target);
+        const returned = convertFromMarkdown(exported.markdown, target, { DOMParser });
+        const commonMark = exportMarkdown(returned.markdown, 'commonmark');
+        const warnings = [...new Set([
+          ...imported.warnings,
+          ...exported.warnings,
+          ...returned.warnings,
+          ...commonMark.warnings
+        ])].sort();
+
+        assert.equal(commonMark.markdown, expected.markdown);
+        assert.deepEqual(warnings, [expected.warning]);
+        assert.doesNotMatch(commonMark.markdown, /<\s*(?:script|style)\b/i);
+      });
+    }
+  }
+});
+
+test('CommonMark inline HTML image titles are preserved with an explicit warning', async t => {
+  const { JSDOM } = require('jsdom');
+  const { convertFromMarkdown, exportMarkdown } =
+    await import('../src/markdownConversion.mjs');
+  const DOMParser = new JSDOM('').window.DOMParser;
+  const example = commonmarkCases.find(candidate => candidate.example === 475);
+
+  for (const target of ['commonmark', 'gfm', 'obsidian']) {
+    await t.test(`CM-EX-475 → ${target}`, () => {
+      const imported = convertFromMarkdown(example.markdown, 'commonmark', { DOMParser });
+      const exported = exportMarkdown(imported.markdown, target);
+      const returned = convertFromMarkdown(exported.markdown, target, { DOMParser });
+      const commonMark = exportMarkdown(returned.markdown, 'commonmark');
+      const warnings = [...new Set([
+        ...imported.warnings,
+        ...exported.warnings,
+        ...returned.warnings,
+        ...commonMark.warnings
+      ])];
+
+      assert.equal(commonMark.markdown, example.markdown);
+      assert.deepEqual(warnings, [rawImageTitleWarning]);
+    });
   }
 });
 
@@ -862,9 +955,12 @@ test('CommonMark raw HTML semantic parity has explicit per-example pending cases
   }
 });
 
-test('CommonMark raw HTML semantic parity remains explicitly incomplete', () => {
-  assert.ok(parserComparableCases.length < commonmarkCases.length);
-  assert.ok(pendingHtmlSemanticCases.length > 0);
+test('CommonMark raw HTML semantic cases have no unclassified examples', () => {
+  assert.equal(
+    verifiedHtmlInteropExamples.size + pendingHtmlSemanticCases.length,
+    htmlInteropCases.length
+  );
+  assert.equal(pendingHtmlSemanticCases.length, 0);
   assert.ok(
     fs.existsSync(path.join(__dirname, 'fixtures/COMMONMARK-LICENSE.md')),
     'the upstream fixture attribution and license are present'

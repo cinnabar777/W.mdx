@@ -1510,6 +1510,90 @@
     .cm-content .cm-line {
       color: var(--text-color, #ffffff) !important;
     }
+    .cm-content .cm-raw-html-text {
+      white-space: inherit;
+    }
+    .cm-content .cm-raw-html-a {
+      color: var(--link-color, #8ab4f8);
+      text-decoration: underline;
+      text-decoration-thickness: 1px;
+      text-underline-offset: 0.12em;
+    }
+    .cm-content .cm-raw-html-b,
+    .cm-content .cm-raw-html-strong,
+    .cm-content .cm-raw-html-dt {
+      font-weight: 700;
+    }
+    .cm-content .cm-raw-html-i,
+    .cm-content .cm-raw-html-em,
+    .cm-content .cm-raw-html-cite,
+    .cm-content .cm-raw-html-dfn {
+      font-style: italic;
+    }
+    .cm-content .cm-raw-html-u,
+    .cm-content .cm-raw-html-ins {
+      text-decoration: underline;
+    }
+    .cm-content .cm-raw-html-s,
+    .cm-content .cm-raw-html-strike,
+    .cm-content .cm-raw-html-del {
+      text-decoration: line-through;
+    }
+    .cm-content .cm-raw-html-code,
+    .cm-content .cm-raw-html-kbd,
+    .cm-content .cm-raw-html-samp {
+      font-family: var(--source-font-family, monospace);
+    }
+    .cm-content .cm-raw-html-kbd {
+      border: 1px solid currentColor;
+      border-radius: 0.2em;
+      padding: 0 0.2em;
+    }
+    .cm-content .cm-raw-html-mark {
+      background: var(--mark-highlight-bg, #ffeb3b);
+      color: var(--mark-highlight-text, #111111);
+    }
+    .cm-content .cm-raw-html-h1 {
+      font-size: 2em;
+      font-weight: 700;
+    }
+    .cm-content .cm-raw-html-h2 {
+      font-size: 1.5em;
+      font-weight: 700;
+    }
+    .cm-content .cm-raw-html-h3 {
+      font-size: 1.17em;
+      font-weight: 700;
+    }
+    .cm-content .cm-raw-html-h4 {
+      font-size: 1em;
+      font-weight: 700;
+    }
+    .cm-content .cm-raw-html-h5 {
+      font-size: 0.83em;
+      font-weight: 700;
+    }
+    .cm-content .cm-raw-html-h6 {
+      font-size: 0.67em;
+      font-weight: 700;
+    }
+    .cm-content .cm-raw-html-small {
+      font-size: 0.83em;
+    }
+    .cm-content .cm-raw-html-big {
+      font-size: 1.17em;
+    }
+    .cm-content .cm-raw-html-sub {
+      vertical-align: sub;
+      font-size: 0.8em;
+    }
+    .cm-content .cm-raw-html-sup {
+      vertical-align: super;
+      font-size: 0.8em;
+    }
+    .cm-content .cm-raw-html-q {
+      font-style: italic;
+    }
 
     .cm-content .cm-hardbreak-syntax {
       display: none;
@@ -1751,16 +1835,38 @@
     /* One inline-flow layout for raw, revealed, and rendered markers. Actual
        visible prefix width determines hanging wrapping; no hidden syntax gap. */
     body.list-wrap-under-text .cm-content .cm-line.cm-list-item {
-      display: block !important;
+      display: flex !important;
+      align-items: flex-start !important;
+      column-gap: 0 !important;
       box-sizing: border-box !important;
-      padding-left: var(--list-marker-gutter, 0px) !important;
-      text-indent: calc(0px - var(--list-marker-gutter, 0px)) !important;
+      padding-left: 0 !important;
+      text-indent: 0 !important;
+    }
+    body.list-wrap-under-text .cm-content .cm-line.cm-list-item > .cm-layout-prefix {
+      flex: 0 0 auto !important;
+      margin-right: 0.4em !important;
+    }
+    body.list-wrap-under-text .cm-content .cm-line.cm-list-item > .cm-list-bullet,
+    body.list-wrap-under-text .cm-content .cm-line.cm-list-item > .cm-list-number {
+      flex: 0 0 auto !important;
+      margin-right: 0.4em !important;
+    }
+    body.list-wrap-under-text .cm-content .cm-line.cm-list-item > .cm-todo-checkbox {
+      flex: 0 0 auto !important;
+    }
+    body.list-wrap-under-text .cm-content .cm-line.cm-list-item > .cm-list-block-text {
+      display: block !important;
+      flex: 1 1 0% !important;
+      box-sizing: border-box !important;
+      width: auto !important;
+      min-width: 0 !important;
+      white-space: pre-wrap !important;
     }
     body.list-wrap-under-text .cm-content .cm-line.cm-list-continuation {
       padding-left: max(0px, calc(var(--list-continuation-offset, 0ch) - var(--layout-visible-indent, 0px))) !important;
     }
 
-    #editor-container.source-mode .cm-source-table-widget {
+    #editor-container .cm-source-table-widget {
       display: block !important;
       box-sizing: border-box !important;
       width: 100% !important;
@@ -1857,6 +1963,7 @@
     }
     .cm-content .cm-italic {
       font-style: italic !important;
+      font-size: var(--italic-font-size, inherit) !important;
       color: var(--italic-color, inherit) !important;
       font-weight: var(--italic-font-weight, 400) !important;
       font-family: var(--italic-font-family, inherit) !important;
@@ -2287,6 +2394,13 @@
       flex-wrap: nowrap !important;
       position: relative !important;
       box-sizing: border-box !important;
+    }
+
+    /* The rendered header owns its leading icon; do not apply a measured
+       quote/list-marker gutter, which shifts the complete header on caret entry. */
+    .cm-content .cm-line.cm-callout.cm-callout-title-rendered:not(.cm-list-item) {
+      padding-left: var(--callout-padding, 12px) !important;
+      text-indent: 0 !important;
     }
 
     .cm-content .cm-line.cm-callout-title:not(:has(+ .cm-line.cm-callout-body)) {

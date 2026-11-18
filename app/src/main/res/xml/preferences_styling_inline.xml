@@ -45,6 +45,15 @@
             android:entryValues="@array/font_family_values"
             android:defaultValue="default" />
 
+        <com.wmdx.markdownapp.ResetSeekBarPreference
+            app:key="pref_italic_font_size"
+            app:title="Italic Text Size (px)"
+            app:summary="Font size for italic text"
+            app:min="8"
+            android:max="32"
+            app:defaultValue="16"
+            app:showSeekBarValue="true" />
+
         <com.wmdx.markdownapp.ResetColorPickerPreference
             app:key="pref_italic_color"
             app:title="Italic Text Color"
@@ -101,14 +110,14 @@
             app:key="pref_links_obsidian_enabled"
             app:title="Obsidian Internal Links"
             app:summary="Recognize [[target|alias]] links"
-            app:defaultValue="true"
+            app:defaultValue="false"
             app:dependency="pref_links_enabled" />
 
         <com.wmdx.markdownapp.ResetSwitchPreference
             app:key="pref_links_wmdx_enabled"
             app:title="Wmdx Links"
             app:summary="Recognize [SOURCE|TITLE|SIZE|ALIGN] links"
-            app:defaultValue="true"
+            app:defaultValue="false"
             app:dependency="pref_links_enabled" />
 
         <com.wmdx.markdownapp.ResetListPreference
@@ -117,7 +126,7 @@
             app:summary="Syntax inserted for external and internal links"
             android:entries="@array/link_authoring_syntax_entries"
             android:entryValues="@array/link_authoring_syntax_values"
-            app:defaultValue="wmdx"
+            app:defaultValue="commonmark"
             app:dependency="pref_links_enabled" />
 
         <com.wmdx.markdownapp.ResetColorPickerPreference

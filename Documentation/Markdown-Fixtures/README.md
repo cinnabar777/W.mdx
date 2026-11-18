@@ -1,6 +1,6 @@
 # Markdown Compatibility Fixture Packs
 
-These four documents were supplied as Markdown comparison tests. Their original attribution and intentionally hard-wrapped examples are retained; only broken local media references, clearly malformed example links, and missing package assets were repaired. New prose is kept on single physical lines so it does not introduce soft breaks.
+These four documents were supplied as Markdown comparison tests. Their original attribution and intentionally hard-wrapped examples are retained; only broken local media references, clearly malformed example links, missing package assets, and syntax samples that were accidentally parsed as Markdown were repaired. Literal syntax examples use inline code spans; new prose is kept on single physical lines so it does not introduce soft breaks.
 
 Each folder contains one ready-to-open `.mdz` archive, its Markdown entry document, and the local resources used by its image, embed, and attachment examples. Open the archive in W.mdx, then test Source, Live Preview, and WYSIWYG before exporting to HTML or MHTML and importing the result again.
 
@@ -17,7 +17,13 @@ For each entry document, record the starting profile, convert to each of the oth
 
 Then export the same document to standalone HTML and MHTML, reimport it, verify the generated table-of-contents links resolve to their headings, and compare all content including the final section and every local media/attachment. The parent-relative and root-relative examples in the CommonMark pack remain deliberate portability probes rather than broken package assets.
 
-Run `node Documentation/Markdown-Fixtures/audit_roundtrips.mjs` to print complete line-by-line diffs, conversion warnings, and a rendered-HTML meaning comparison for every cross-flavor round trip. Pass `CommonMark`, `GFM`, `Obsidian`, or `Markdown-Syntax` to inspect one fixture. A zero exit code means only that the audit ran; any printed difference still needs classification and resolution before that route can be marked compatible.
+Run `node Documentation/Markdown-Fixtures/audit_roundtrips.mjs` to print complete line-by-line diffs, conversion warnings, rendered-HTML meaning, and tracked structural counts for every cross-flavor round trip. The audit supplies a DOM parser so Markdown imports exercise the same HTML conversion path as the app. Pass `CommonMark`, `GFM`, `Obsidian`, or `Markdown-Syntax` to inspect one fixture. A zero exit code means only that the audit ran; any printed difference still needs classification and resolution before that route can be marked compatible.
+
+## Latest full-fixture findings
+
+The Obsidian reference sheet's unmatched backtick was repaired as a literal code span, and its MDZip was rebuilt. The CommonMark fixture exposed two converter defects: blank lines inside a raw HTML `<details>` block could push its body outside the dropdown, and Setext heading conversion could leave later protected-line indexes stale and rewrite math/code. Focused regressions now cover both, and CommonMark, GFM, and classic-syntax fixture routes preserve rendered meaning in the current full audit.
+
+Obsidian remains partial: converting callouts to CommonMark changes their container/fold presentation; GFM maps two `info` callouts to `note`; the Obsidian HTML round trip still has five literal note-transclusion escape differences. These are recorded losses, not claimed passes. See `Documentation/Markdown-Compatibility-Matrix.md` for the current status and boundaries.
 
 The packages can be regenerated with `python3 Documentation/Markdown-Fixtures/build_mdz.py` and checked without rewriting them with `python3 Documentation/Markdown-Fixtures/build_mdz.py --check`. The builder includes the original file plus every resource in its fixture folder and validates relative Markdown, HTML, and Obsidian links before writing each archive.
 

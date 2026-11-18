@@ -62,12 +62,19 @@ export function convertHtmlToMarkdownProfile(
   Parser = globalThis.DOMParser,
   conversionOptions = {}
 ) {
+  const profile = normalizeMarkdownDialectProfile(profileValue);
+  const options = conversionOptions && typeof conversionOptions === 'object'
+    ? conversionOptions
+    : {};
   const imported = convertFromHtml(
     String(htmlSource ?? ''),
     Parser,
-    conversionOptions
+    {
+      ...options,
+      preserveUnsupportedHtmlAsRaw: options.preserveUnsupportedHtmlAsRaw ??
+        profile === 'commonmark'
+    }
   );
-  const profile = normalizeMarkdownDialectProfile(profileValue);
   const exported = profile === 'wmdx'
     ? imported
     : exportMarkdown(imported.markdown, profile);

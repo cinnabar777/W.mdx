@@ -7,27 +7,27 @@
             app:key="pref_footnote_syntax_enabled"
             app:title="Enable Footnotes"
             app:summary="Recognize and render footnote syntax"
-            app:defaultValue="true" />
+            app:defaultValue="false" />
 
         <com.wmdx.markdownapp.ResetSwitchPreference
             app:key="pref_footnote_syntax_wmdx_enabled"
             app:title="Wmdx Footnotes"
             app:summary="Recognize ^ references and ^ definitions"
-            app:defaultValue="true"
+            app:defaultValue="false"
             app:dependency="pref_footnote_syntax_enabled" />
 
         <com.wmdx.markdownapp.ResetSwitchPreference
             app:key="pref_footnote_syntax_markdown_enabled"
             app:title="Markdown Reference Footnotes"
             app:summary="Recognize [^label] references used by GFM and Obsidian"
-            app:defaultValue="true"
+            app:defaultValue="false"
             app:dependency="pref_footnote_syntax_enabled" />
 
         <com.wmdx.markdownapp.ResetSwitchPreference
             app:key="pref_footnote_syntax_obsidian_inline_enabled"
             app:title="Obsidian Inline Footnotes"
             app:summary="Recognize ^[note text] inline footnotes"
-            app:defaultValue="true"
+            app:defaultValue="false"
             app:dependency="pref_footnote_syntax_enabled" />
 
         <com.wmdx.markdownapp.ResetListPreference
@@ -36,7 +36,7 @@
             app:summary="Syntax inserted by the footnote toolbar and shortcut"
             android:entries="@array/footnote_authoring_syntax_entries"
             android:entryValues="@array/footnote_authoring_syntax_values"
-            app:defaultValue="wmdx"
+            app:defaultValue="markdown"
             app:dependency="pref_footnote_syntax_enabled" />
     </com.wmdx.markdownapp.ResetPreferenceCategory>
 

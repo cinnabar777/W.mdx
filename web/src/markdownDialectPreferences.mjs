@@ -6,27 +6,49 @@ export const MARKDOWN_DIALECT_PROFILES = Object.freeze([
 ]);
 
 const BASE_FEATURE_DEFAULTS = Object.freeze({
-  pref_gfm_extensions_enabled: true,
+  pref_gfm_extensions_enabled: false,
   pref_heading_syntax_enabled: true,
   pref_heading_syntax_hash_enabled: true,
   pref_heading_syntax_setext_enabled: true,
+  pref_heading_syntax_wmdx_enabled: false,
   pref_list_syntax_enabled: true,
   pref_list_syntax_markdown_enabled: true,
+  pref_list_syntax_gfm_tasks_enabled: false,
+  pref_list_syntax_wmdx_enabled: false,
   pref_links_enabled: true,
   pref_links_commonmark_enabled: true,
   pref_links_reference_enabled: true,
-  pref_footnote_syntax_enabled: true,
-  pref_footnote_syntax_markdown_enabled: true,
-  pref_wmdx_color_syntax_enabled: true,
+  pref_links_obsidian_enabled: false,
+  pref_links_wmdx_enabled: false,
+  pref_callout_syntax_enabled: false,
+  pref_callout_syntax_wmdx_enabled: false,
+  pref_callout_syntax_obsidian_enabled: false,
+  pref_footnote_syntax_enabled: false,
+  pref_footnote_syntax_wmdx_enabled: false,
+  pref_footnote_syntax_markdown_enabled: false,
+  pref_footnote_syntax_obsidian_inline_enabled: false,
+  pref_wmdx_color_syntax_enabled: false,
   pref_obsidian_highlight_enabled: false,
-  pref_wmdx_subscript_enabled: true,
-  pref_wmdx_superscript_enabled: true,
-  pref_underline_use_wmdx_syntax: true
+  pref_wmdx_subscript_enabled: false,
+  pref_wmdx_superscript_enabled: false,
+  pref_underline_use_wmdx_syntax: false,
+  pref_heading_authoring_syntax: 'hash',
+  pref_list_authoring_syntax: 'markdown',
+  pref_links_authoring_syntax: 'commonmark',
+  pref_callout_authoring_syntax: 'obsidian',
+  pref_footnote_authoring_syntax: 'markdown'
 });
 
 const PROFILE_DEFAULTS = Object.freeze({
   wmdx: Object.freeze({
     ...BASE_FEATURE_DEFAULTS,
+    pref_gfm_extensions_enabled: true,
+    pref_footnote_syntax_enabled: true,
+    pref_footnote_syntax_markdown_enabled: true,
+    pref_wmdx_color_syntax_enabled: true,
+    pref_wmdx_subscript_enabled: true,
+    pref_wmdx_superscript_enabled: true,
+    pref_underline_use_wmdx_syntax: true,
     pref_heading_syntax_wmdx_enabled: true,
     pref_heading_authoring_syntax: 'wmdx',
     pref_list_syntax_gfm_tasks_enabled: true,
@@ -45,6 +67,8 @@ const PROFILE_DEFAULTS = Object.freeze({
   }),
   commonmark: Object.freeze({
     ...BASE_FEATURE_DEFAULTS,
+    pref_footnote_syntax_enabled: false,
+    pref_footnote_syntax_markdown_enabled: false,
     pref_gfm_extensions_enabled: false,
     pref_heading_syntax_wmdx_enabled: false,
     pref_heading_authoring_syntax: 'hash',
@@ -57,7 +81,7 @@ const PROFILE_DEFAULTS = Object.freeze({
     pref_callout_syntax_enabled: false,
     pref_callout_syntax_wmdx_enabled: false,
     pref_callout_syntax_obsidian_enabled: false,
-    pref_callout_authoring_syntax: 'wmdx',
+    pref_callout_authoring_syntax: 'obsidian',
     pref_footnote_syntax_wmdx_enabled: false,
     pref_footnote_syntax_obsidian_inline_enabled: false,
     pref_footnote_authoring_syntax: 'markdown',
@@ -69,6 +93,9 @@ const PROFILE_DEFAULTS = Object.freeze({
   }),
   gfm: Object.freeze({
     ...BASE_FEATURE_DEFAULTS,
+    pref_gfm_extensions_enabled: true,
+    pref_footnote_syntax_enabled: true,
+    pref_footnote_syntax_markdown_enabled: true,
     pref_heading_syntax_wmdx_enabled: false,
     pref_heading_authoring_syntax: 'hash',
     pref_list_syntax_gfm_tasks_enabled: true,
@@ -92,6 +119,9 @@ const PROFILE_DEFAULTS = Object.freeze({
   }),
   obsidian: Object.freeze({
     ...BASE_FEATURE_DEFAULTS,
+    pref_gfm_extensions_enabled: true,
+    pref_footnote_syntax_enabled: true,
+    pref_footnote_syntax_markdown_enabled: true,
     pref_heading_syntax_wmdx_enabled: false,
     pref_heading_authoring_syntax: 'hash',
     pref_list_syntax_gfm_tasks_enabled: true,
@@ -117,7 +147,7 @@ const PROFILE_DEFAULTS = Object.freeze({
 
 export function normalizeMarkdownDialectProfile(value) {
   const profile = String(value ?? '').trim().toLowerCase();
-  return MARKDOWN_DIALECT_PROFILES.includes(profile) ? profile : 'wmdx';
+  return MARKDOWN_DIALECT_PROFILES.includes(profile) ? profile : 'commonmark';
 }
 
 /**

@@ -17,6 +17,8 @@ test('each profile supplies defaults for supported syntax and authoring choices'
   assert.equal(commonmark.pref_list_authoring_syntax, 'markdown');
   assert.equal(commonmark.pref_gfm_extensions_enabled, false);
   assert.equal(commonmark.pref_callout_syntax_enabled, false);
+  assert.equal(commonmark.pref_footnote_syntax_enabled, false);
+  assert.equal(commonmark.pref_footnote_syntax_markdown_enabled, false);
   assert.equal(commonmark.pref_wmdx_subscript_enabled, false);
   assert.equal(commonmark.pref_wmdx_superscript_enabled, false);
   assert.equal(commonmark.pref_wmdx_color_syntax_enabled, false);
@@ -67,12 +69,20 @@ test('explicitly saved feature choices override profile defaults', async () => {
   assert.equal(resolved.pref_links_wmdx_enabled, false);
 });
 
-test('unknown profile values fall back to the compatible Wmdx profile', async () => {
+test('missing or unknown profiles fall back to CommonMark defaults', async () => {
   const { applyMarkdownDialectProfile } =
     await import('../src/markdownDialectPreferences.mjs');
+  const missing = applyMarkdownDialectProfile({});
   const resolved = applyMarkdownDialectProfile({
     pref_markdown_profile: 'unknown'
   });
-  assert.equal(resolved.pref_markdown_profile, 'wmdx');
-  assert.equal(resolved.pref_list_authoring_syntax, 'wmdx');
+  for (const fallback of [missing, resolved]) {
+    assert.equal(fallback.pref_markdown_profile, 'commonmark');
+    assert.equal(fallback.pref_list_authoring_syntax, 'markdown');
+    assert.equal(fallback.pref_heading_syntax_wmdx_enabled, false);
+    assert.equal(fallback.pref_list_syntax_wmdx_enabled, false);
+    assert.equal(fallback.pref_links_wmdx_enabled, false);
+    assert.equal(fallback.pref_callout_syntax_enabled, false);
+    assert.equal(fallback.pref_footnote_syntax_enabled, false);
+  }
 });

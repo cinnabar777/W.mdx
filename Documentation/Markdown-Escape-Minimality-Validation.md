@@ -24,6 +24,7 @@ The executable cases live in `web/test/markdown-escape-audit.test.cjs`. `web/src
 | ESC-TXT-01/02 | `markdownText` through HTML import and CommonMark export | Plain punctuation stays bare; literal emphasis, code, entity-like text, links, and HTML-looking text retain their source meaning. |
 | ESC-BLK-01, ESC-HDG-01, ESC-LST-01, ESC-QUO-01 | `markdownText` in paragraph, heading, list, and quote contexts | `5. Item` is escaped only where it would start an ordered list; heading numbers remain unescaped; quote/list markers are protected only in their ambiguous block context. |
 | ESC-BLK-02, ESC-REF-01, ESC-HTML-01 | `markdownText` block syntax | Thematic rules, Setext underlines, reference definitions, and HTML declarations remain literal when the test context requires it. |
+| ESC-HTML-ORDERED-SOFTBREAK-01 | HTML paragraph import / CommonMark renderer | After a soft break, the period in `1.` is escaped because that ordered marker can interrupt the paragraph; `14.` remains bare because it cannot. The imported spelling and rendered semantics are asserted independently. |
 | ESC-SLASH-01 | `markdownText` backslash-run serializer | Literal backslash runs adjacent to paired delimiters survive; a backslash before an ordinary letter is not doubled without need. |
 | ESC-SLASH-RUN-1..4 | `escapeMarkdownField` / CommonMark renderer | Runs of one through four literal backslashes are tested before an ordinary letter, punctuation, a pipe, a line ending, and end-of-input. |
 | ESC-CODE-SPAN-01 | HTML `<code>` import / CommonMark renderer | Code content containing one or more backticks and edge spaces uses a sufficiently long backtick fence and padding; backslash-escaping a backtick inside a code span is forbidden. |
@@ -56,6 +57,7 @@ The helper fails if a fixture omits its case ID, producer, target, or case ratio
 - Literal `===` was escaped despite not forming an active Wmdx construct.
 - Balanced parentheses in an HTML link destination were escaped even though CommonMark accepts them. Only unmatched parentheses require protection.
 - Angle brackets in HTML link destinations were backslash-escaped even though the target renderer produced the same URL without those escapes. They are now percent-encoded instead.
+- HTML paragraph import escaped higher ordered markers after soft breaks even when they cannot interrupt the paragraph. It now emits `1\.` only for the interrupting marker and leaves `14.` bare; the focused source-spelling test accompanies the CommonMark parity gate.
 - Backticks inside imported HTML `<code>` content were backslash-escaped even though Markdown code spans do not process backslash escapes. HTML code now selects a longer fence and adds padding only when needed; both HTML import routes are checked against CommonMark-rendered code text.
 - Wmdx resource fields, media labels, image alt text, link labels, and inline footnotes now use minimal backslash-run serialization appropriate to their parser. Wmdx resource fields treat `|` as a field separator; CommonMark link fields use CommonMark punctuation rules.
 
