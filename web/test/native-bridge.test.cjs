@@ -557,6 +557,7 @@ test('typography editor categories are separated into individual navigation page
     'pref_font_weight_bold',
     'pref_font_file_bold',
     'pref_italic_color',
+    'pref_italic_font_size',
     'pref_font_weight_italic',
     'pref_font_file_italic',
     'pref_link_color',

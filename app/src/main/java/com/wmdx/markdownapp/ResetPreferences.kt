@@ -473,6 +473,7 @@ object PreferenceResetHelper {
             key == "pref_heading_scale_percent" -> 100
             key == "pref_heading_color" -> "default"
             key == "pref_heading_word_spacing" -> "0px"
+            key == "pref_italic_font_size" -> 16
             key == "pref_font_weight_bold" -> 700
             key == "pref_font_weight_italic" -> 400
             key == "pref_font_weight_heading" -> 700

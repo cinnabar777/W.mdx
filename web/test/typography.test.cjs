@@ -17,6 +17,11 @@ const resetSource = fs.readFileSync(
 
 test('applyAllPreferences handles Android XML preference keys correctly', () => {
   assert.ok(source.includes('pref_body_font_size'), 'Missing pref_body_font_size');
+  assert.ok(source.includes('pref_italic_font_size'), 'Missing pref_italic_font_size');
+  assert.ok(
+    resetSource.includes('key == "pref_italic_font_size" -> 16'),
+    'Italic text size resets to its default'
+  );
   assert.ok(source.includes('pref_paragraph_line_height'), 'Missing pref_paragraph_line_height');
   assert.ok(source.includes('pref_letter_spacing'), 'Missing pref_letter_spacing');
   assert.ok(source.includes('pref_paragraph_align'), 'Missing pref_paragraph_align');
@@ -43,6 +48,7 @@ test('applyAllPreferences handles Android XML preference keys correctly', () => 
 test('applyAllPreferences sets all required CSS variables', () => {
   const variables = [
     '--body-font-size',
+    '--italic-font-size',
     '--paragraph-line-height',
     '--paragraph-letter-spacing',
     '--paragraph-align',

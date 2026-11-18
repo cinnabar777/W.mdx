@@ -45,6 +45,15 @@
             android:entryValues="@array/font_family_values"
             android:defaultValue="default" />
 
+        <com.wmdx.markdownapp.ResetSeekBarPreference
+            app:key="pref_italic_font_size"
+            app:title="Italic Text Size (px)"
+            app:summary="Font size for italic text"
+            app:min="8"
+            android:max="32"
+            app:defaultValue="16"
+            app:showSeekBarValue="true" />
+
         <com.wmdx.markdownapp.ResetColorPickerPreference
             app:key="pref_italic_color"
             app:title="Italic Text Color"

@@ -2094,7 +2094,13 @@ class ImagePreviewWidget extends WidgetType {
       event.preventDefault();
       event.stopPropagation();
       hideActions();
-      openImageDeleteConfirmation(view, this.from, this.to, this.sourceFormat);
+      openImageDeleteConfirmation(
+        view,
+        this.from,
+        this.to,
+        this.sourceFormat,
+        this.url
+      );
     });
     actions.append(editButton, deleteButton);
 
@@ -6913,7 +6919,9 @@ class CodeMirrorAdapter {
         const parsed = parseMarkdownAudioLink(raw) ||
           parseMarkdownVideoLink(raw) ||
           parseMarkdownAttachmentLink(raw) ||
-          parseMarkdownEmbeddedDocumentLink(raw);
+          parseMarkdownEmbeddedDocumentLink(raw) ||
+          parseMarkdownImage(raw) ||
+          parseObsidianImageEmbed(raw);
         if (parsed?.url) references.add(parsed.url);
       }
     });
@@ -10889,16 +10897,26 @@ function openImageDeleteConfirmation(
   view,
   from,
   to,
-  sourceFormat = 'markdown'
+  sourceFormat = 'markdown',
+  imageLink = ''
 ) {
   const overlay = document.querySelector('#editor-modal-overlay');
   const dialog = document.querySelector('#editor-modal-dialog');
   if (!overlay || !dialog || !view) return;
 
+  const documentSessionId =
+    window.AndroidNative?.getCurrentDocumentSessionId?.() || null;
+  const canDeletePackagedAsset =
+    window.AndroidNative?.canDeletePackagedAsset?.(
+      imageLink,
+      documentSessionId
+    ) === true;
   dialog.innerHTML = `
     <h3 class="modal-title">Delete Image?</h3>
     <p class="modal-message">
-      This removes the image from the document only. The image file itself will not be deleted.
+      ${canDeletePackagedAsset
+        ? 'This removes the image from the document and deletes its file from the package when you save.'
+        : 'This removes the image from the document only. The image file itself will not be deleted.'}
     </p>
     <div class="modal-actions">
       <button type="button" class="modal-btn modal-btn-cancel" id="modal-image-keep">Keep Image</button>
@@ -10932,9 +10950,21 @@ function openImageDeleteConfirmation(
       close();
       return;
     }
+    if (
+      canDeletePackagedAsset &&
+      window.AndroidNative?.deletePackagedAsset?.(
+        imageLink,
+        documentSessionId
+      ) !== true
+    ) {
+      dialog.querySelector('.modal-message').textContent =
+        'Could not delete this image from the package. The document was not changed.';
+      return;
+    }
     view.dispatch({
       changes: { from, to, insert: '' },
-      selection: { anchor: from, head: from }
+      selection: { anchor: from, head: from },
+      userEvent: canDeletePackagedAsset ? 'delete.packaged-image' : 'delete.image'
     });
     close();
   });
@@ -13432,6 +13462,7 @@ window.editorBridge = {
     setCssVar('--bold-color', prefs.pref_bold_color);
     setCssVar('--bold-font-weight', prefs.pref_font_weight_bold);
     setCssVar('--italic-color', prefs.pref_italic_color);
+    setCssVar('--italic-font-size', prefs.pref_italic_font_size ?? 16, 'px');
     setCssVar('--italic-font-weight', prefs.pref_font_weight_italic);
     const italicDecoration = prefs.pref_italic_decoration || 'none';
     setCssVar('--italic-decoration-line', italicDecoration === 'none' ? 'none' : 'underline');

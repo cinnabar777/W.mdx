@@ -230,6 +230,13 @@ Links: www.example.com, https://example.com/path, person@example.com.
             val attachment = File(sessionDir, "attachments/notes.pdf")
             assertTrue(attachment.parentFile?.mkdirs() == true)
             attachment.writeBytes(byteArrayOf(4, 5, 6))
+            val image = File(sessionDir, "attachments/photo.png")
+            image.writeBytes(byteArrayOf(7, 8, 9))
+            val embeddedDocument = File(sessionDir, "attachments/embedded.mdz")
+            embeddedDocument.writeBytes(byteArrayOf(10, 11, 12))
+            val video = File(sessionDir, "video/clip.mp4")
+            assertTrue(video.parentFile?.mkdirs() == true)
+            video.writeBytes(byteArrayOf(13, 14, 15))
             val session = MdzipSession(
                 sessionDir,
                 "index.md",
@@ -246,22 +253,40 @@ Links: www.example.com, https://example.com/path, person@example.com.
             assertTrue(session.pendingAudioDeletions.isEmpty())
             assertTrue(MdzipManager.stagePackagedAssetDeletion(session, "audio/voice.mp3"))
             assertTrue(MdzipManager.stagePackagedAssetDeletion(session, "attachments/notes.pdf"))
+            assertTrue(MdzipManager.stagePackagedAssetDeletion(session, "attachments/photo.png"))
+            assertTrue(MdzipManager.stagePackagedAssetDeletion(session, "attachments/embedded.mdz"))
+            assertTrue(MdzipManager.stagePackagedAssetDeletion(session, "video/clip.mp4"))
             assertTrue(session.pendingAttachmentDeletions.contains("attachments/notes.pdf"))
+            assertTrue(session.pendingAttachmentDeletions.contains("attachments/photo.png"))
+            assertTrue(session.pendingAttachmentDeletions.contains("attachments/embedded.mdz"))
 
             MdzipManager.syncPackagedAssetReferences(
                 session,
-                listOf("audio/voice.mp3", "attachments/notes.pdf")
+                listOf(
+                    "audio/voice.mp3",
+                    "attachments/notes.pdf",
+                    "attachments/photo.png",
+                    "attachments/embedded.mdz",
+                    "video/clip.mp4"
+                )
             )
             assertTrue(session.pendingAudioDeletions.isEmpty())
+            assertTrue(session.pendingVideoDeletions.isEmpty())
             assertTrue(session.pendingAttachmentDeletions.isEmpty())
             MdzipManager.writeSessionArchive(sessionDir, emptySet(), archiveFile)
             ZipFile(archiveFile).use { archive ->
                 assertTrue(archive.getEntry("audio/voice.mp3") != null)
                 assertTrue(archive.getEntry("attachments/notes.pdf") != null)
+                assertTrue(archive.getEntry("attachments/photo.png") != null)
+                assertTrue(archive.getEntry("attachments/embedded.mdz") != null)
+                assertTrue(archive.getEntry("video/clip.mp4") != null)
             }
 
             assertTrue(MdzipManager.stagePackagedAssetDeletion(session, "audio/voice.mp3"))
             assertTrue(MdzipManager.stagePackagedAssetDeletion(session, "attachments/notes.pdf"))
+            assertTrue(MdzipManager.stagePackagedAssetDeletion(session, "attachments/photo.png"))
+            assertTrue(MdzipManager.stagePackagedAssetDeletion(session, "attachments/embedded.mdz"))
+            assertTrue(MdzipManager.stagePackagedAssetDeletion(session, "video/clip.mp4"))
             val pending = session.pendingAudioDeletions +
                 session.pendingVideoDeletions +
                 session.pendingAttachmentDeletions
@@ -269,6 +294,9 @@ Links: www.example.com, https://example.com/path, person@example.com.
             ZipFile(archiveFile).use { archive ->
                 assertEquals(null, archive.getEntry("audio/voice.mp3"))
                 assertEquals(null, archive.getEntry("attachments/notes.pdf"))
+                assertEquals(null, archive.getEntry("attachments/photo.png"))
+                assertEquals(null, archive.getEntry("attachments/embedded.mdz"))
+                assertEquals(null, archive.getEntry("video/clip.mp4"))
             }
         } finally {
             archiveFile.delete()
