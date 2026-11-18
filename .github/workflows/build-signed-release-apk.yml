@@ -46,7 +46,6 @@ jobs:
       - name: Make Gradle Wrapper Executable
         run: chmod +x gradlew
 
-      # ---- Signing setup ----
       - name: Decode keystore
         run: |
           echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 -d > release.keystore
@@ -70,7 +69,6 @@ jobs:
           name: Wmdx-Signed-Release-APK
           path: app/build/outputs/apk/release/app-release.apk
 
-      # Optional: clean up the keystore so it doesn't linger on the runner
       - name: Remove keystore
         if: always()
         run: rm -f release.keystore
