@@ -216,7 +216,7 @@ Links: www.example.com, https://example.com/path, person@example.com.
     }
 
     @Test
-    fun packageAssetDeletionIsExplicitAndUndoCancelsThePendingRemoval() {
+    fun removingPackagedAssetReferencesDeletesFilesAndUndoRestoresThem() {
         val sessionDir = File.createTempFile("mdzip-delete-session-", ".tmp")
         assertTrue(sessionDir.delete())
         assertTrue(sessionDir.mkdirs())
@@ -234,6 +234,9 @@ Links: www.example.com, https://example.com/path, person@example.com.
             image.writeBytes(byteArrayOf(7, 8, 9))
             val embeddedDocument = File(sessionDir, "attachments/embedded.mdz")
             embeddedDocument.writeBytes(byteArrayOf(10, 11, 12))
+            val externalImage = File(sessionDir, "images/external.png")
+            assertTrue(externalImage.parentFile?.mkdirs() == true)
+            externalImage.writeBytes(byteArrayOf(16, 17, 18))
             val video = File(sessionDir, "video/clip.mp4")
             assertTrue(video.parentFile?.mkdirs() == true)
             video.writeBytes(byteArrayOf(13, 14, 15))
@@ -250,29 +253,54 @@ Links: www.example.com, https://example.com/path, person@example.com.
                 listOf("audio/voice.mp3"),
                 emptyList()
             )
-            assertTrue(session.pendingAudioDeletions.isEmpty())
-            assertTrue(MdzipManager.stagePackagedAssetDeletion(session, "audio/voice.mp3"))
-            assertTrue(MdzipManager.stagePackagedAssetDeletion(session, "attachments/notes.pdf"))
-            assertTrue(MdzipManager.stagePackagedAssetDeletion(session, "attachments/photo.png"))
-            assertTrue(MdzipManager.stagePackagedAssetDeletion(session, "attachments/embedded.mdz"))
-            assertTrue(MdzipManager.stagePackagedAssetDeletion(session, "video/clip.mp4"))
-            assertTrue(session.pendingAttachmentDeletions.contains("attachments/notes.pdf"))
-            assertTrue(session.pendingAttachmentDeletions.contains("attachments/photo.png"))
-            assertTrue(session.pendingAttachmentDeletions.contains("attachments/embedded.mdz"))
-
+            MdzipManager.syncVideoReferences(
+                session,
+                listOf("video/clip.mp4"),
+                emptyList()
+            )
             MdzipManager.syncPackagedAssetReferences(
                 session,
                 listOf(
-                    "audio/voice.mp3",
                     "attachments/notes.pdf",
                     "attachments/photo.png",
                     "attachments/embedded.mdz",
-                    "video/clip.mp4"
+                    "images/external.png"
+                ),
+                emptyList()
+            )
+            assertTrue(session.pendingAudioDeletions.contains("audio/voice.mp3"))
+            assertTrue(session.pendingVideoDeletions.contains("video/clip.mp4"))
+            assertTrue(session.pendingPackagedAssetDeletions.contains("attachments/notes.pdf"))
+            assertTrue(session.pendingPackagedAssetDeletions.contains("attachments/photo.png"))
+            assertTrue(session.pendingPackagedAssetDeletions.contains("attachments/embedded.mdz"))
+            assertTrue(session.pendingPackagedAssetDeletions.contains("images/external.png"))
+            assertTrue(MdzipManager.canDeletePackagedAsset(session, "images/external.png"))
+            assertTrue(MdzipManager.stagePackagedAssetDeletion(session, "images/external.png"))
+
+            // Restoring the references cancels the staged archive deletions.
+            MdzipManager.syncAudioReferences(
+                session,
+                emptyList(),
+                listOf("audio/voice.mp3")
+            )
+            MdzipManager.syncVideoReferences(
+                session,
+                emptyList(),
+                listOf("video/clip.mp4")
+            )
+            MdzipManager.syncPackagedAssetReferences(
+                session,
+                emptyList(),
+                listOf(
+                    "attachments/notes.pdf",
+                    "attachments/photo.png",
+                    "attachments/embedded.mdz",
+                    "images/external.png"
                 )
             )
             assertTrue(session.pendingAudioDeletions.isEmpty())
             assertTrue(session.pendingVideoDeletions.isEmpty())
-            assertTrue(session.pendingAttachmentDeletions.isEmpty())
+            assertTrue(session.pendingPackagedAssetDeletions.isEmpty())
             MdzipManager.writeSessionArchive(sessionDir, emptySet(), archiveFile)
             ZipFile(archiveFile).use { archive ->
                 assertTrue(archive.getEntry("audio/voice.mp3") != null)
@@ -280,16 +308,33 @@ Links: www.example.com, https://example.com/path, person@example.com.
                 assertTrue(archive.getEntry("attachments/photo.png") != null)
                 assertTrue(archive.getEntry("attachments/embedded.mdz") != null)
                 assertTrue(archive.getEntry("video/clip.mp4") != null)
+                assertTrue(archive.getEntry("images/external.png") != null)
             }
 
-            assertTrue(MdzipManager.stagePackagedAssetDeletion(session, "audio/voice.mp3"))
-            assertTrue(MdzipManager.stagePackagedAssetDeletion(session, "attachments/notes.pdf"))
-            assertTrue(MdzipManager.stagePackagedAssetDeletion(session, "attachments/photo.png"))
-            assertTrue(MdzipManager.stagePackagedAssetDeletion(session, "attachments/embedded.mdz"))
-            assertTrue(MdzipManager.stagePackagedAssetDeletion(session, "video/clip.mp4"))
+            // Removing the references again makes every asset disappear from the saved archive.
+            MdzipManager.syncAudioReferences(
+                session,
+                listOf("audio/voice.mp3"),
+                emptyList()
+            )
+            MdzipManager.syncVideoReferences(
+                session,
+                listOf("video/clip.mp4"),
+                emptyList()
+            )
+            MdzipManager.syncPackagedAssetReferences(
+                session,
+                listOf(
+                    "attachments/notes.pdf",
+                    "attachments/photo.png",
+                    "attachments/embedded.mdz",
+                    "images/external.png"
+                ),
+                emptyList()
+            )
             val pending = session.pendingAudioDeletions +
                 session.pendingVideoDeletions +
-                session.pendingAttachmentDeletions
+                session.pendingPackagedAssetDeletions
             MdzipManager.writeSessionArchive(sessionDir, pending, archiveFile)
             ZipFile(archiveFile).use { archive ->
                 assertEquals(null, archive.getEntry("audio/voice.mp3"))
@@ -297,6 +342,7 @@ Links: www.example.com, https://example.com/path, person@example.com.
                 assertEquals(null, archive.getEntry("attachments/photo.png"))
                 assertEquals(null, archive.getEntry("attachments/embedded.mdz"))
                 assertEquals(null, archive.getEntry("video/clip.mp4"))
+                assertEquals(null, archive.getEntry("images/external.png"))
             }
         } finally {
             archiveFile.delete()

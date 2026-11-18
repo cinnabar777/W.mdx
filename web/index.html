@@ -1598,6 +1598,9 @@
     .cm-content .cm-hardbreak-syntax {
       display: none;
     }
+    .cm-content .cm-hardbreak-spaces {
+      white-space: break-spaces !important;
+    }
 
     /* Paragraph settings apply only to Markdown Paragraph nodes that are NOT list items. */
     .cm-content .cm-paragraph:not(.cm-list-item) {
@@ -1605,6 +1608,7 @@
       font-family: var(--body-font-family, inherit) !important;
       font-weight: var(--body-font-weight, 400) !important;
       color: var(--body-text-color, var(--text-color, #ffffff)) !important;
+      white-space: pre-wrap !important;
       text-align: var(--paragraph-align, left) !important;
       letter-spacing: var(--paragraph-letter-spacing, 0px) !important;
       line-height: var(--paragraph-line-height, 1.6) !important;
@@ -1615,7 +1619,6 @@
       margin-top: var(--paragraph-margin-top, 0px) !important;
     }
     body.paragraph-justify-hyphenate .cm-content .cm-paragraph:not(.cm-list-item) {
-      white-space: normal !important;
       text-indent: 0 !important;
       text-justify: inter-word !important;
       word-spacing: normal !important;

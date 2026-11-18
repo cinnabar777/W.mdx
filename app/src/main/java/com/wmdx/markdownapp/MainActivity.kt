@@ -5947,23 +5947,31 @@ class MainActivity : AppCompatActivity(), SharedPreferences.OnSharedPreferenceCh
 
         @JavascriptInterface
         fun syncPackagedAssetReferences(
-            referencesJson: String?,
+            previousReferencesJson: String?,
+            currentReferencesJson: String?,
             documentSessionId: String?
         ) {
             if (documentSessionId != currentDocumentSessionId) return
-            val references = runCatching {
+            fun parseReferences(referencesJson: String?): List<String>? = runCatching {
                 val values = org.json.JSONArray(referencesJson ?: "[]")
                 (0 until values.length()).mapNotNull { index ->
                     values.optString(index).takeIf { it.isNotBlank() }
                 }
-            }.getOrNull() ?: return
+            }.getOrNull()
+
+            val previousReferences = parseReferences(previousReferencesJson) ?: return
+            val currentReferences = parseReferences(currentReferencesJson) ?: return
 
             when (currentDocumentFormat) {
                 DocumentFormat.MDZIP -> currentMdzipSession?.let {
-                    MdzipManager.syncPackagedAssetReferences(it, references)
+                    MdzipManager.syncPackagedAssetReferences(
+                        it,
+                        previousReferences,
+                        currentReferences
+                    )
                 }
                 DocumentFormat.TEXT_PACK -> currentTextPackSession?.let {
-                    TextPackManager.syncAssetReferences(it, references)
+                    TextPackManager.syncAssetReferences(it, currentReferences)
                 }
                 DocumentFormat.MARKDOWN -> Unit
             }

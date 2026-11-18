@@ -36,16 +36,20 @@ jobs:
         run: |
           node web/build.cjs
 
-      - name: Run focused Markdown conversion and paste tests
+      - name: Run focused Markdown rendering, conversion, and paste tests
         working-directory: web
         run: |
           node --test \
+            test/commonmark-wysiwyg-rendering.test.cjs \
             test/markdown-conversion.test.cjs \
             test/html-export.test.cjs \
             test/markdown-compatibility-matrix.test.cjs \
             test/gfm-spec-extensions.test.cjs \
             test/markdown-paste.test.cjs \
-            test/markdown-html-rendering.test.cjs
+            test/markdown-html-rendering.test.cjs \
+            test/mdzip-audio-player.test.cjs \
+            test/mdzip-media.test.cjs \
+            test/mdzip-video.test.cjs
 
       - name: Install Playwright Chromium
         working-directory: web
@@ -67,7 +71,10 @@ jobs:
         run: chmod +x gradlew
 
       - name: Run backup-default preference test
-        run: ./gradlew testDebugUnitTest --tests com.wmdx.markdownapp.AppPreferenceDefaultsTest
+        run: |
+          ./gradlew testDebugUnitTest \
+            --tests com.wmdx.markdownapp.AppPreferenceDefaultsTest \
+            --tests com.wmdx.markdownapp.MdzipManagerTest
 
       - name: Build Debug APK
         run: ./gradlew assembleDebug

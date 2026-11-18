@@ -6,6 +6,10 @@ const path = require('node:path');
 test('deleting a packaged image removes its package asset while Markdown keeps link-only behavior', () => {
   const main = fs.readFileSync(path.join(__dirname, '../src/main.js'), 'utf8');
   const styles = fs.readFileSync(path.join(__dirname, '../index.html'), 'utf8');
+  const manager = fs.readFileSync(
+    path.join(__dirname, '../../app/src/main/java/com/wmdx/markdownapp/MdzipManager.kt'),
+    'utf8'
+  );
   const preferences = fs.readFileSync(
     path.join(__dirname, '../../app/src/main/res/xml/preferences_styling_inline.xml'),
     'utf8'
@@ -16,7 +20,11 @@ test('deleting a packaged image removes its package asset while Markdown keeps l
   assert.match(main, /deletePackagedAsset\?\.\([\s\S]*?imageLink/);
   assert.match(main, /This removes the image from the document and deletes its file from the package when you save\./);
   assert.match(main, /This removes the image from the document only\. The image file itself will not be deleted\./);
-  assert.match(main, /userEvent: canDeletePackagedAsset \? 'delete\.packaged-image' : 'delete\.image'/);
+  assert.match(main, /const imageWasDeletedFromPackage\s*=/);
+  assert.match(main, /userEvent: imageWasDeletedFromPackage \? 'delete\.packaged-image' : 'delete\.image'/);
+  assert.match(manager, /isSupportedImageFileName\(archivePath\)/);
+  assert.match(manager, /pendingPackagedAssetDeletions/);
+  assert.match(main, /avif\|bmp\|gif\|heic\|heif\|jpe\?\|png\|svg\|tiff\?\|webp/);
   assert.match(main, /parseMarkdownImage\(raw\)[\s\S]*?parseObsidianImageEmbed\(raw\)/);
   assert.match(styles, /font-size: var\(--italic-font-size, inherit\) !important/);
   assert.match(preferences, /app:key="pref_italic_font_size"[\s\S]*?app:title="Italic Text Size \(px\)"/);

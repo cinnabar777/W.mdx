@@ -153,7 +153,7 @@ test('playable and notice-only video formats are packaged and rendered distinctl
   assert.match(manager, /fun syncVideoReferences\(/);
   assert.match(
     manager,
-    /session\.pendingAudioDeletions \+[\s\S]*session\.pendingVideoDeletions \+[\s\S]*session\.pendingAttachmentDeletions/
+    /session\.pendingAudioDeletions \+[\s\S]*session\.pendingVideoDeletions \+[\s\S]*session\.pendingPackagedAssetDeletions/
   );
   assert.match(activity, /pickVideoLauncher\.launch\("video\/\*"\)/);
   assert.match(activity, /MdzipManager\.isSupportedVideoFileName\(archivePath\)/);

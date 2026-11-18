@@ -389,15 +389,16 @@ test('audio edit controls save width and alignment, and the keyboard requests se
   assert.match(player, /this\.layout\.alignment === 'center'/);
 });
 
-test('audio links retain package files unless Delete is chosen and staged changes remain undoable', () => {
+test('removing an audio reference stages package deletion and undo can restore it', () => {
   const editor = read('src/main.js');
   const player = read('src/audioPreviewWidget.js');
   const manager = read('../app/src/main/java/com/wmdx/markdownapp/MdzipManager.kt');
   assert.match(editor, /syncMdzipAudioReferences\?\.\(\s*JSON\.stringify\(\[\.\.\.previousUrls\]\)/);
-  assert.match(editor, /syncPackagedAssetReferences\?\./);
+  assert.match(editor, /syncPackagedAssetReferences\?\.\([\s\S]*?JSON\.stringify\(\[\.\.\.previousReferences\]\)[\s\S]*?JSON\.stringify\(\[\.\.\.currentReferences\]\)/);
   assert.match(manager, /pendingAudioDeletions: MutableSet<String>/);
   assert.match(manager, /safeArchivePath\(name\) !in pendingDeletions/);
   assert.match(manager, /fun syncAudioReferences\(/);
+  assert.match(manager, /previousPaths - currentPaths/);
   assert.match(manager, /session\.pendingAudioDeletions\.add\(archivePath\)/);
   assert.match(player, /userEvent: deletePackagedAsset \? 'delete\.packaged-audio' : 'delete\.audio-link'/);
 });

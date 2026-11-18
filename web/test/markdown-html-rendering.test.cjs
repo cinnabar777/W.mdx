@@ -408,9 +408,10 @@ test('raw HTML respects WYSIWYG syntax-exposure settings', async () => {
     await new Promise(resolve => setTimeout(resolve, 20));
     content = window.document.querySelector('.cm-content');
     assert.equal(content.querySelectorAll('.cm-hardbreak-syntax').length, 0,
-      'two-space hard-break spelling remains ordinary visible whitespace in WYSIWYG');
-    assert.equal(content.querySelector('.cm-hardbreak-spaces'), null,
-      'ordinary spaces are not wrapped or given special whitespace styling');
+      'two-space hard-break spelling is not hidden as syntax');
+    const hardBreakSpaces = content.querySelector('.cm-hardbreak-spaces');
+    assert.ok(hardBreakSpaces, 'hard-break spaces retain a visible whitespace style');
+    assert.equal(hardBreakSpaces.textContent, '  ');
 
     await window.editorBridge.setEditorMode('rendered');
     window.editorBridge.setMarkdownSyntaxExposure('hidden');

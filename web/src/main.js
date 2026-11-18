@@ -1021,11 +1021,54 @@ function hardBreakSyntaxEnd(doc, node) {
     : node.to;
 }
 
-function hardBreakSyntaxDecoration(doc, node) {
+function hardBreakSyntaxDecorations(doc, node) {
   const end = hardBreakSyntaxEnd(doc, node);
-  // Keep the two-space hard-break spelling visible; only hide a backslash marker.
-  if (end <= node.from || doc.sliceString(end - 1, end) !== '\\') return null;
-  return Decoration.mark({ class: 'cm-hardbreak-syntax' }).range(end - 1, end);
+  if (end <= node.from) return [];
+  if (doc.sliceString(end - 1, end) === '\\') {
+    return [{
+      decoration: Decoration.mark({ class: 'cm-hardbreak-syntax' }).range(end - 1, end),
+      hidden: true
+    }];
+  }
+
+  let spacesFrom = end;
+  while (
+    spacesFrom > node.from &&
+    doc.sliceString(spacesFrom - 1, spacesFrom) === ' '
+  ) {
+    spacesFrom -= 1;
+  }
+  if (end - spacesFrom < 2) return [];
+  return [{
+    decoration: Decoration.mark({ class: 'cm-hardbreak-spaces' }).range(spacesFrom, end),
+    hidden: false
+  }];
+}
+
+function completedBlockMarkerEnd(doc, node, line) {
+  const markerEnd = Math.min(node.to, line.to);
+  const separatorEnd = Math.min(markerEnd + 1, line.to);
+  if (separatorEnd <= markerEnd) return markerEnd;
+  if (!/^[ \t]$/.test(doc.sliceString(markerEnd, separatorEnd))) return markerEnd;
+  return doc.sliceString(separatorEnd, line.to).trim()
+    ? separatorEnd
+    : markerEnd;
+}
+
+const completedMarkdownSyntaxParents = {
+  EmphasisMark: new Set(['Emphasis', 'StrongEmphasis']),
+  StrikethroughMark: new Set(['Strikethrough']),
+  SubscriptMark: new Set(['Subscript']),
+  CodeMark: new Set(['InlineCode'])
+};
+
+function hasCompletedMarkdownSyntaxParent(node) {
+  const expectedParents = completedMarkdownSyntaxParents[node.name];
+  if (!expectedParents) return false;
+  for (let parent = node.parent; parent; parent = parent.parent) {
+    if (expectedParents.has(parent.name)) return true;
+  }
+  return false;
 }
 
 function markdownCodeSpanDisplayText(doc, node) {
@@ -3664,10 +3707,9 @@ export const livePreviewPlugin = ViewPlugin.fromClass(class {
           }
 
           if (!isPureWysiwyg && !isNodeActive && node.name === 'HardBreak') {
-            const decoration = hardBreakSyntaxDecoration(doc, node);
-            if (decoration) {
+            for (const { decoration, hidden } of hardBreakSyntaxDecorations(doc, node)) {
               builder.push(decoration);
-              hiddenSyntaxRanges.push(decoration);
+              if (hidden) hiddenSyntaxRanges.push(decoration);
             }
           }
 
@@ -3690,7 +3732,7 @@ export const livePreviewPlugin = ViewPlugin.fromClass(class {
 
           if (node.name === 'HeaderMark' && !isNodeActive) {
             if (headingEnabled && !isPureWysiwyg) {
-              const end = Math.min(node.to + 1, line.to);
+              const end = completedBlockMarkerEnd(doc, node, line);
               if (end > node.from && end <= line.to) {
                 hideSyntax(node.from, end);
               }
@@ -3713,7 +3755,11 @@ export const livePreviewPlugin = ViewPlugin.fromClass(class {
           if (node.name === 'StrongEmphasis') {
             builder.push(Decoration.mark({ class: 'cm-bold' }).range(node.from, node.to));
           }
-          if (node.name === 'EmphasisMark' && !isNodeActive) {
+          if (
+            node.name === 'EmphasisMark' &&
+            !isNodeActive &&
+            hasCompletedMarkdownSyntaxParent(node)
+          ) {
             const isWmdxUnderlineDelimiter = underlineSyntaxRanges.some(range =>
               range.kind === 'wmdx' && (
                 (node.from >= range.wrapperFrom && node.to <= range.contentFrom) ||
@@ -3737,13 +3783,22 @@ export const livePreviewPlugin = ViewPlugin.fromClass(class {
           if (node.name === 'Strikethrough') {
             builder.push(Decoration.mark({ class: 'cm-strikethrough' }).range(node.from, node.to));
           }
-          if (node.name === 'StrikethroughMark' && !isNodeActive) {
+          if (
+            node.name === 'StrikethroughMark' &&
+            !isNodeActive &&
+            hasCompletedMarkdownSyntaxParent(node)
+          ) {
             if (!isPureWysiwyg) hideSyntax(node.from, node.to);
           }
           if (node.name === 'Subscript') {
             builder.push(Decoration.mark({ class: 'cm-subscript' }).range(node.from, node.to));
           }
-          if (node.name === 'SubscriptMark' && !isNodeActive && !isPureWysiwyg) {
+          if (
+            node.name === 'SubscriptMark' &&
+            !isNodeActive &&
+            !isPureWysiwyg &&
+            hasCompletedMarkdownSyntaxParent(node)
+          ) {
             hideSyntax(node.from, node.to);
           }
 
@@ -3761,7 +3816,11 @@ export const livePreviewPlugin = ViewPlugin.fromClass(class {
             }
             builder.push(Decoration.mark({ class: 'cm-inline-code' }).range(node.from, node.to));
           }
-          if (node.name === 'CodeMark' && !isNodeActive) {
+          if (
+            node.name === 'CodeMark' &&
+            !isNodeActive &&
+            hasCompletedMarkdownSyntaxParent(node)
+          ) {
             if (!isPureWysiwyg) hideSyntax(node.from, node.to);
           }
 
@@ -5198,7 +5257,7 @@ function buildHeightMapValue(state) {
 
       if (node.name === 'HeaderMark') {
         if (isHeadingFlavorEnabledNow(getHeadingFlavorAtNode(node, doc))) {
-          const end = Math.min(node.to + 1, line.to);
+          const end = completedBlockMarkerEnd(doc, node, line);
           if (end > node.from && end <= line.to) {
             hideSyntax(node.from, end);
           }
@@ -5210,18 +5269,24 @@ function buildHeightMapValue(state) {
         }
       }
 
-      if (node.name === 'EmphasisMark') {
+      if (node.name === 'EmphasisMark' && hasCompletedMarkdownSyntaxParent(node)) {
         hideSyntax(node.from, node.to);
       }
 
-      if (node.name === 'StrikethroughMark') {
+      if (
+        node.name === 'StrikethroughMark' &&
+        hasCompletedMarkdownSyntaxParent(node)
+      ) {
         hideSyntax(node.from, node.to);
       }
-      if (node.name === 'SubscriptMark') {
+      if (
+        node.name === 'SubscriptMark' &&
+        hasCompletedMarkdownSyntaxParent(node)
+      ) {
         hideSyntax(node.from, node.to);
       }
 
-      if (node.name === 'CodeMark') {
+      if (node.name === 'CodeMark' && hasCompletedMarkdownSyntaxParent(node)) {
         hideSyntax(node.from, node.to);
       }
 
@@ -5284,7 +5349,7 @@ function buildHeightMapValue(state) {
           layout.lines.get(line.from)?.callout
         )
       ) {
-        hideSyntax(node.from, Math.min(node.to + 1, line.to));
+        hideSyntax(node.from, completedBlockMarkerEnd(doc, node, line));
       }
 
       if (node.name === 'Escape') {
@@ -5293,10 +5358,9 @@ function buildHeightMapValue(state) {
       }
 
       if (node.name === 'HardBreak') {
-        const decoration = hardBreakSyntaxDecoration(doc, node);
-        if (decoration) {
+        for (const { decoration, hidden } of hardBreakSyntaxDecorations(doc, node)) {
           replacements.push(decoration);
-          hiddenSyntaxRanges.push(decoration);
+          if (hidden) hiddenSyntaxRanges.push(decoration);
         }
       }
 
@@ -6903,7 +6967,7 @@ class CodeMirrorAdapter {
         update.state.doc.sliceString(fromB, toB);
       if (
         /(?:assets|attachments|audio|video)\//i.test(changedText) ||
-        /\.(?:md|mdz|mp3|aac|m4a|wav|flac|opus|ogg|oga|mp4|m4v|webm|3gp|mov|mkv|avi|mpeg|mpg|ogv|wmv|pdf|zip|docx?|xlsx?|pptx?|txt|csv|rtf|html?)(?:$|[?#\s)>])/i.test(changedText)
+        /\.(?:md|mdz|avif|bmp|gif|heic|heif|jpe?g|png|svg|tiff?|webp|mp3|aac|m4a|wav|flac|opus|ogg|oga|mp4|m4v|webm|3gp|mov|mkv|avi|mpeg|mpg|ogv|wmv|pdf|zip|docx?|xlsx?|pptx?|txt|csv|rtf|html?)(?:$|[?#\s)>])/i.test(changedText)
       ) {
         assetLinksMayHaveChanged = true;
       }
@@ -6911,24 +6975,30 @@ class CodeMirrorAdapter {
     if (!assetLinksMayHaveChanged) return;
     if (!forceParsing(update.view, update.state.doc.length, 40)) return;
 
-    const references = new Set();
-    syntaxTree(update.state).iterate({
-      enter: node => {
-        if (node.name !== 'Link' && node.name !== 'Image') return;
-        const raw = update.state.doc.sliceString(node.from, node.to);
-        const parsed = parseMarkdownAudioLink(raw) ||
-          parseMarkdownVideoLink(raw) ||
-          parseMarkdownAttachmentLink(raw) ||
-          parseMarkdownEmbeddedDocumentLink(raw) ||
-          parseMarkdownImage(raw) ||
-          parseObsidianImageEmbed(raw);
-        if (parsed?.url) references.add(parsed.url);
-      }
-    });
+    const collectReferences = state => {
+      const references = new Set();
+      syntaxTree(state).iterate({
+        enter: node => {
+          if (node.name !== 'Link' && node.name !== 'Image') return;
+          const raw = state.doc.sliceString(node.from, node.to);
+          const parsed = parseMarkdownAudioLink(raw) ||
+            parseMarkdownVideoLink(raw) ||
+            parseMarkdownAttachmentLink(raw) ||
+            parseMarkdownEmbeddedDocumentLink(raw) ||
+            parseMarkdownImage(raw) ||
+            parseObsidianImageEmbed(raw);
+          if (parsed?.url) references.add(parsed.url);
+        }
+      });
+      return references;
+    };
+    const previousReferences = collectReferences(update.startState);
+    const currentReferences = collectReferences(update.state);
 
     try {
       window.AndroidNative?.syncPackagedAssetReferences?.(
-        JSON.stringify([...references]),
+        JSON.stringify([...previousReferences]),
+        JSON.stringify([...currentReferences]),
         this.documentSessionId
       );
     } catch (error) {
@@ -10950,13 +11020,12 @@ function openImageDeleteConfirmation(
       close();
       return;
     }
-    if (
-      canDeletePackagedAsset &&
+    const imageWasDeletedFromPackage =
       window.AndroidNative?.deletePackagedAsset?.(
         imageLink,
         documentSessionId
-      ) !== true
-    ) {
+      ) === true;
+    if (canDeletePackagedAsset && !imageWasDeletedFromPackage) {
       dialog.querySelector('.modal-message').textContent =
         'Could not delete this image from the package. The document was not changed.';
       return;
@@ -10964,7 +11033,7 @@ function openImageDeleteConfirmation(
     view.dispatch({
       changes: { from, to, insert: '' },
       selection: { anchor: from, head: from },
-      userEvent: canDeletePackagedAsset ? 'delete.packaged-image' : 'delete.image'
+      userEvent: imageWasDeletedFromPackage ? 'delete.packaged-image' : 'delete.image'
     });
     close();
   });

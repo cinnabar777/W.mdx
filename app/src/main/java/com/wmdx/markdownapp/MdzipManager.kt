@@ -28,7 +28,7 @@ data class MdzipSession(
     var sourceUri: Uri?,
     val pendingAudioDeletions: MutableSet<String> = linkedSetOf(),
     val pendingVideoDeletions: MutableSet<String> = linkedSetOf(),
-    val pendingAttachmentDeletions: MutableSet<String> = linkedSetOf(),
+    val pendingPackagedAssetDeletions: MutableSet<String> = linkedSetOf(),
     val originalArchivePaths: MutableMap<String, String> = linkedMapOf(),
     val originalDirectoryPaths: MutableMap<String, String> = linkedMapOf()
 )
@@ -332,7 +332,7 @@ object MdzipManager {
 
             val pendingDeletions = session.pendingAudioDeletions +
                 session.pendingVideoDeletions +
-                session.pendingAttachmentDeletions
+                session.pendingPackagedAssetDeletions
             val stagedArchive = File.createTempFile("mdzip-save-", ".mdz", context.cacheDir)
             try {
                 writeSessionArchive(
@@ -690,9 +690,14 @@ object MdzipManager {
 
     fun canDeletePackagedAsset(session: MdzipSession, markdownLink: String): Boolean {
         val archivePath = resolveRelativeArchivePath(session.entryPoint, markdownLink) ?: return false
-        val isManagedAsset = archivePath.startsWith("attachments/") ||
+        val isProtectedPackageFile = archivePath == session.entryPoint ||
+            archivePath.equals(MANIFEST_NAME, ignoreCase = true)
+        val isManagedAsset = !isProtectedPackageFile && (
+            archivePath.startsWith("attachments/") ||
             (archivePath.startsWith("audio/") && isSupportedAudioFileName(archivePath)) ||
-            (archivePath.startsWith("video/") && isSupportedVideoFileName(archivePath))
+            (archivePath.startsWith("video/") && isSupportedVideoFileName(archivePath)) ||
+            isSupportedImageFileName(archivePath)
+        )
         return isManagedAsset && assetArchiveFile(session, archivePath) != null
     }
 
@@ -702,25 +707,43 @@ object MdzipManager {
         synchronized(session) {
             when {
                 archivePath.startsWith("attachments/") ->
-                    session.pendingAttachmentDeletions.add(archivePath)
+                    session.pendingPackagedAssetDeletions.add(archivePath)
                 archivePath.startsWith("audio/") ->
                     session.pendingAudioDeletions.add(archivePath)
                 archivePath.startsWith("video/") ->
                     session.pendingVideoDeletions.add(archivePath)
+                isSupportedImageFileName(archivePath) ->
+                    session.pendingPackagedAssetDeletions.add(archivePath)
                 else -> return false
             }
             return true
         }
     }
 
-    fun syncPackagedAssetReferences(session: MdzipSession, currentReferences: Collection<String>) {
-        val currentPaths = currentReferences.mapNotNullTo(linkedSetOf()) {
+    fun syncPackagedAssetReferences(
+        session: MdzipSession,
+        previousReferences: Collection<String>,
+        currentReferences: Collection<String>
+    ) {
+        val previousAssetPaths = previousReferences.mapNotNullTo(linkedSetOf()) {
             resolveRelativeArchivePath(session.entryPoint, it)
+                ?.takeIf { path ->
+                    path.startsWith("attachments/") || isSupportedImageFileName(path)
+                }
+        }
+        val currentAssetPaths = currentReferences.mapNotNullTo(linkedSetOf()) {
+            resolveRelativeArchivePath(session.entryPoint, it)
+                ?.takeIf { path ->
+                    path.startsWith("attachments/") || isSupportedImageFileName(path)
+                }
         }
         synchronized(session) {
-            session.pendingAudioDeletions.removeAll(currentPaths)
-            session.pendingVideoDeletions.removeAll(currentPaths)
-            session.pendingAttachmentDeletions.removeAll(currentPaths)
+            (previousAssetPaths - currentAssetPaths).forEach { path ->
+                if (assetArchiveFile(session, path) != null) {
+                    session.pendingPackagedAssetDeletions.add(path)
+                }
+            }
+            session.pendingPackagedAssetDeletions.removeAll(currentAssetPaths)
         }
     }
 
@@ -792,14 +815,19 @@ object MdzipManager {
         }
     }
 
-    @Suppress("UNUSED_PARAMETER")
     fun syncAudioReferences(
         session: MdzipSession,
         previousLinks: Collection<String>,
         currentLinks: Collection<String>
     ) {
+        val previousPaths = previousLinks.mapNotNull { resolveAudioArchivePath(session, it) }.toSet()
         val currentPaths = currentLinks.mapNotNull { resolveAudioArchivePath(session, it) }.toSet()
         synchronized(session) {
+            (previousPaths - currentPaths).forEach { path ->
+                if (audioArchiveFile(session, path) != null) {
+                    session.pendingAudioDeletions.add(path)
+                }
+            }
             session.pendingAudioDeletions.removeAll(currentPaths)
         }
     }
@@ -823,14 +851,19 @@ object MdzipManager {
         return "$ASSET_BASE_URL/${session.sessionDir.name}/${Uri.encode(archivePath, "/")}"
     }
 
-    @Suppress("UNUSED_PARAMETER")
     fun syncVideoReferences(
         session: MdzipSession,
         previousLinks: Collection<String>,
         currentLinks: Collection<String>
     ) {
+        val previousPaths = previousLinks.mapNotNull { resolveVideoArchivePath(session, it) }.toSet()
         val currentPaths = currentLinks.mapNotNull { resolveVideoArchivePath(session, it) }.toSet()
         synchronized(session) {
+            (previousPaths - currentPaths).forEach { path ->
+                if (videoArchiveFile(session, path) != null) {
+                    session.pendingVideoDeletions.add(path)
+                }
+            }
             session.pendingVideoDeletions.removeAll(currentPaths)
         }
     }

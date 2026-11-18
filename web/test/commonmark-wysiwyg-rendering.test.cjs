@@ -22,6 +22,10 @@ function sourceText(content) {
 function assertHardBreakRendering(lines, window) {
   assert.ok(lines[0].textContent.endsWith('Hard break by spaces:  '));
   assert.equal(lines[0].querySelector('.cm-hardbreak-syntax'), null);
+  const preservedSpaces = lines[0].querySelector('.cm-hardbreak-spaces');
+  assert.ok(preservedSpaces, 'two-space hard breaks remain visible whitespace');
+  assert.equal(preservedSpaces.textContent, '  ');
+  assert.equal(window.getComputedStyle(preservedSpaces).whiteSpace, 'break-spaces');
 
   const backslashMarker = lines[1].querySelector('.cm-hardbreak-syntax');
   assert.ok(backslashMarker, 'the backslash hard-break marker has a rendering decoration');
@@ -41,6 +45,10 @@ async function waitForDomCondition(window, predicate, message, timeoutMs = 5000)
 test('CommonMark inline syntax, hard breaks, and list indentation render without changing source', async () => {
   const html = fs.readFileSync(path.join(appAssets, 'index.html'), 'utf8');
   const bundle = fs.readFileSync(path.join(appAssets, 'bundle.js'), 'utf8');
+  assert.match(
+    html,
+    /\.cm-content \.cm-paragraph:not\(\.cm-list-item\) \{[^}]*white-space:\s*pre-wrap !important;/
+  );
   const errors = [];
   const virtualConsole = new VirtualConsole();
   virtualConsole.on('jsdomError', error => errors.push(error.message));
@@ -564,6 +572,25 @@ test('CommonMark inline syntax, hard breaks, and list indentation render without
     assert.equal(sourceOrderedContent.querySelectorAll('.cm-list-item').length, 0,
       'Source does not apply rendered ordered-list layout');
     assert.equal(window.editorBridge.getMarkdown(), orderedStyleSource);
+
+    const incompleteInlineSyntax = 'Keep this *unfinished ';
+    window.editorBridge.setMarkdown(incompleteInlineSyntax);
+    await new Promise(resolve => setTimeout(resolve, 20));
+    await window.editorBridge.setEditorMode('live_preview');
+    assert.equal(
+      window.document.querySelector('.cm-content').textContent,
+      incompleteInlineSyntax,
+      'incomplete inline delimiters and their spaces stay visible'
+    );
+    assert.equal(window.editorBridge.getMarkdown(), incompleteInlineSyntax);
+
+    window.editorBridge.setMarkdown('# ');
+    await new Promise(resolve => setTimeout(resolve, 20));
+    assert.equal(
+      window.document.querySelector('.cm-content').textContent,
+      ' ',
+      'a heading separator remains visible until heading text completes the syntax'
+    );
 
     assert.deepEqual(errors, []);
   } finally {
